@@ -63,6 +63,57 @@ is worth. Cover CCAR-P objectives alongside CCAR-F ones where the step earns it.
 the guides are distributed through the Anthropic Partner Academy and are not public. Keep
 [`EXAM-COVERAGE.md`](EXAM-COVERAGE.md) in sync whenever a step changes what is covered.
 
+## How Claudiu wants this built
+
+Learned from review during steps 01–02. These are settled; do not re-litigate them.
+
+### Pace
+
+- **Do not run ahead to the next step.** A step is finished when *he* says so, not when the code
+  works. Expect several rounds of "this part isn't right" on a step that already runs, and treat
+  each as a real defect rather than polish. Never close a message by pushing toward the next step.
+- Answer the question actually asked before proposing anything further.
+
+### Output that teaches
+
+- **Use the real SDK field name for every value shown** — `usage.input_tokens`, `duration_ms`,
+  `contextWindow`. Never a friendly relabel like "input" or "cost". He is learning names he will be
+  examined on, and a prettier label hides the thing worth knowing.
+- **Label anything derived as computed**, with its formula, so a calculated number is never
+  mistaken for one the SDK reported.
+- **Never show the same quantity twice under two names.** Token counts appear once, in the API's
+  own snake_case; `model_usage` shows only fields that exist nowhere else. Redundancy reads as
+  noise, not rigour.
+- **The display must be structurally truthful.** Render each message as its own section labelled
+  with its class, because the class *is* the role — a `ToolResultBlock` lives in a `UserMessage`
+  and must never be drawn as part of an `AssistantMessage`. A layout that groups things wrongly
+  teaches a wrong mental model, and no test will ever catch it.
+- **Make the invisible visible**: who executes a tool, that the whole conversation is resent on
+  every call, that the prompt itself is not a stream message. If a mechanism matters, print
+  evidence of it rather than describing it in prose alone.
+- **Truncate per kind of content.** Tool results are enormous and get clipped hard; the model's
+  reasoning is short and is the interesting part, so it is shown in full. One global cap is wrong.
+  Truncation always states the real size.
+
+### Verification
+
+- **Inspect the live stream before designing any display.** Field names are not a specification —
+  `usage.output_tokens` reports a snapshot rather than a tally, and `stop_reason` is null on every
+  assistant message. Both would have been printed as authoritative nonsense if written from the
+  type declarations alone.
+- **Exercise every path.** A run where the model answers from its own knowledge never touches the
+  tool-call code. It looks finished and is not.
+- When a review challenges a claim, **measure it** and report which way it went — including when
+  the challenge was wrong.
+
+### Explaining
+
+- He asks *why*, not just *what*. "Two casings, watch out" is a worse answer than "they differ
+  because the two objects come from opposite sides of the subprocess boundary". Explain the
+  mechanism; the rule then follows from it and is remembered.
+- Give exact copy-pasteable commands when he is going to run something himself, and say up front
+  how large the output will be.
+
 ## Definition of done for a step
 
 1. Code works, **verified by running it** — never "should work".

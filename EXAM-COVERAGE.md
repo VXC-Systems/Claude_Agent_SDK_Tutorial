@@ -27,7 +27,7 @@ scope for *this* tutorial (belongs to a sibling one)
 
 | # | Topic | Status | Where |
 |---|---|---|---|
-| 1.1 | Agentic loop: stop signals, feeding tool results back, model-driven vs. scripted control flow | ✅ | Step 01 §2.1 describes it; **step 02 makes it visible** — turns, `stop_reason`, the request→result→continue cycle |
+| 1.1 | Agentic loop: stop signals, feeding tool results back, model-driven vs. scripted control flow | ✅ | Step 01 §2.1 describes it; **step 02 makes it visible** — message-by-message, who executes the tool, and §2.9 on why the SDK does not surface a per-turn `stop_reason` |
 | 1.2 | Multi-agent orchestration, coordinator ↔ subagent | ○ | Step 07 |
 | 1.3 | Subagent invocation, explicit context passing, spawning | ○ | Step 07 |
 | 1.4 | Multi-step workflows: prerequisite gates and structured handoff | ○ | Step 06 |
@@ -74,7 +74,7 @@ Two items are nonetheless demonstrated by this repo's own machinery.
 
 | # | Topic | Status | Where |
 |---|---|---|---|
-| 5.1 | Preserving critical facts across long conversations; tool output consuming the budget | ◐ | Step 02 shows the problem — one search returned 48k chars against 4k input tokens. Step 03 addresses it |
+| 5.1 | Preserving critical facts across long conversations; tool output consuming the budget | ◐ | Step 02 §2.3 teaches **why** context grows: every call resends the whole conversation, measured at 3,214 → 14,032 tokens. It shows the problem and its cost; *trimming* is step 03 |
 | 5.2 | Escalation triggers and ambiguity resolution | ○ | Step 08 |
 | 5.3 | Error propagation across agents; access failure vs. empty result | ◐ | Step 01 §3.5 surfaces MCP status; step 02 renders `is_error` and permission denials. Full treatment in step 07 |
 | 5.4 | Context management in large codebase exploration | ○ | Step 08 |

@@ -18,7 +18,7 @@ is already in the official docs.
 | Step | What you'll build | Concepts |
 |---|---|---|
 | [`research-agent/01-one-shot/`](research-agent/01-one-shot/) | A CLI agent that searches the live web before answering | Agentic loop · MCP · tools · permissions · isolation |
-| [`research-agent/02-verbose-output/`](research-agent/02-verbose-output/) | The same agent, fully instrumented | Message stream · thinking blocks · tool results · observability · cost and caching |
+| [`research-agent/02-verbose-output/`](research-agent/02-verbose-output/) | The same agent, fully instrumented | Messages and roles · who runs the tool · context growth · thinking blocks · observability and cost |
 
 More steps are added as they're built. Each is a complete, runnable program, not a fragment.
 
@@ -54,14 +54,16 @@ folder inside it.
 ```
 research-agent/          the agent
 ├── README.md            its steps, in order
-└── 01-one-shot/         one stage — code + a README that teaches it
+├── 01-one-shot/         one stage — code + a README that teaches it
+└── 02-verbose-output/   the next stage, same agent
 ```
 
 A new agent is a new top-level folder. Numbered steps are only for the stages of building *one*
 agent, so you can read a single agent's arc from simple to complete.
 
 Every step README follows the same shape: what you'll build → new concepts → setup → code
-walkthrough → run it → **what we learned** → design notes → exam mapping → rough edges → next.
+walkthrough → run it → **what we learned** → design notes → **exam topics covered** → rough edges
+→ next.
 
 ## Certification coverage
 
