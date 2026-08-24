@@ -136,10 +136,17 @@ def render_raw(message: object) -> None:
 
 # ------------------------------------------------------------- renderers
 
+def render_prompt(question: str) -> None:
+    """The prompt is NOT a stream message — say so, so nobody looks for it."""
+    rule("PROMPT", "cyan")
+    print(f"  {c('Not a stream message. This is the string passed to query(); it', 'dim')}")
+    print(f"  {c('becomes the first user turn of the conversation.', 'dim')}\n")
+    body(question, indent=2)
+
+
 def render_init(data: dict) -> None:
     """The one-off session banner: identity, servers, and tool inventory."""
-    rule("SESSION INIT")
-    print(f"  {c('SystemMessage(subtype=\'init\').data', 'dim')}\n")
+    rule("SESSION INIT · SystemMessage(subtype='init')")
     for key in ("session_id", "model", "cwd", "apiKeySource",
                 "permissionMode", "claude_code_version"):
         print(f"  {c(key.ljust(24), 'dim')}{data.get(key, '?')}")
@@ -156,11 +163,11 @@ def render_init(data: dict) -> None:
     tools = data.get("tools", [])
     print(f"\n  {c('tools', 'bold')}  "
           f"{c(f'{len(tools)} discovered · {len(ALLOWED_TOOLS)} in allowed_tools', 'dim')}")
-    for t in tools:
-        if t in ALLOWED_TOOLS:
-            print(f"    {c('✓', 'green')} {t}  {c('← allowed', 'green', 'dim')}")
+    for t_ in tools:
+        if t_ in ALLOWED_TOOLS:
+            print(f"    {c('✓', 'green')} {t_}  {c('← allowed', 'green', 'dim')}")
         else:
-            print(f"    {c('·', 'dim')} {c(t, 'dim')}")
+            print(f"    {c('·', 'dim')} {c(t_, 'dim')}")
     if not tools:
         print(f"    {c('(none — built-ins are disabled)', 'dim')}")
 
@@ -170,79 +177,98 @@ def render_init(data: dict) -> None:
         print(f"\n  {c('memory_paths.auto'.ljust(24), 'dim')}{c(mem, 'dim')}")
 
 
-def render_turn_header(turn: int, message: AssistantMessage) -> None:
-    """Open a turn and show the per-message facts that are actually reliable."""
-    rule(f"TURN {turn}", "blue")
-    print(f"  {c('AssistantMessage', 'dim')}\n")
-    print(f"  {c('message_id'.ljust(37), 'dim')}{message.message_id or '?'}")
-    print(f"  {c('model'.ljust(37), 'dim')}{message.model or '?'}")
-
-    # AssistantMessage.usage — snake_case, unlike model_usage. Real names only.
-    u = message.usage or {}
+def render_assistant_header(seq: int, m: AssistantMessage) -> None:
+    """Open an AssistantMessage. The class name IS the role."""
+    rule(f"[{seq}] AssistantMessage", "blue")
+    print(f"  {c('the model speaking — its output', 'dim')}\n")
+    print(f"  {c('message_id'.ljust(37), 'dim')}{m.message_id or '?'}")
+    print(f"  {c('model'.ljust(37), 'dim')}{m.model or '?'}")
+    u = m.usage or {}
     for name in ("input_tokens", "cache_creation_input_tokens",
                  "cache_read_input_tokens"):
         field(f"usage.{name}", num(u.get(name, 0)))
-    if u.get("service_tier"):
-        print(f"  {c('usage.service_tier'.ljust(37), 'dim')}"
-              f"{str(u['service_tier']):>10}")
-    # Deliberately not printed per turn: usage.output_tokens (the SDK reports a
-    # snapshot here, not a final tally) and stop_reason (None until the run
-    # ends). Both appear, correctly, in the SUMMARY.
+    # usage.output_tokens is a snapshot here, not a tally, and stop_reason is
+    # None until the run ends — both are shown correctly in the ResultMessage.
 
 
-def render_thinking(block: ThinkingBlock, est: int | None, full: bool) -> None:
+def render_user_header(seq: int, m: UserMessage) -> None:
+    """Open a UserMessage — this is how a tool result re-enters the conversation."""
+    rule(f"[{seq}] UserMessage", "yellow")
+    print(f"  {c('NOT you, and not the model. The SDK ran the tool and is handing', 'dim')}")
+    print(f"  {c('the result back as a USER turn — the model\'s next input.', 'dim')}")
+    if m.parent_tool_use_id:
+        print(f"\n  {c('parent_tool_use_id'.ljust(37), 'dim')}{m.parent_tool_use_id}")
+
+
+def render_block_label(name: str, meta: str = "", last: bool = True) -> None:
+    """Marker + the block's real class name.
+
+    A neutral glyph on purpose. The SDK delivers each block as its own
+    AssistantMessage sharing one message_id, so a message never knows whether
+    it holds the last block — a tree glyph would be guessing.
+    """
+    tail = f"  {c(meta, 'dim')}" if meta else ""
+    print(f"\n  {c('▸', 'dim')} {c(name, 'bold')}{tail}")
+
+
+def render_thinking(block: ThinkingBlock, est: int | None, full: bool, last: bool) -> None:
     meta = f"{len(block.thinking):,} chars"
     if est:
         meta += f" · ~{est:,} tokens"
-    print(f"\n  {c('▸ thinking', 'magenta', 'bold')}  {c(meta, 'dim')}")
+    render_block_label("ThinkingBlock", meta, last)
     shown, note = clip(block.thinking, full, THINKING_CHARS)
-    body(shown, colour="dim")
-    if note:
-        print(f"      {c(note, 'dim')}")
-
-
-def render_tool_use(block: ToolUseBlock, full: bool) -> None:
-    print(f"\n  {c('▸ tool call', 'yellow', 'bold')}  {c(block.name, 'yellow')}")
-    kv("id", c(block.id, "dim"), indent=6, width=9)
-    pretty = json.dumps(block.input, indent=2, ensure_ascii=False)
-    shown, note = clip(pretty, full, TOOL_INPUT_CHARS)
-    print(f"      {c('input', 'dim')}")
-    body(shown, indent=8)
-    if note:
-        print(f"        {c(note, 'dim')}")
-
-
-def render_tool_result(block, full: bool) -> None:
-    is_error = bool(getattr(block, "is_error", False))
-    label, colour = ("tool error", "red") if is_error else ("tool result", "green")
-    print(f"\n  {c('▸ ' + label, colour, 'bold')}  "
-          f"{c('← ' + str(getattr(block, 'tool_use_id', '?')), 'dim')}")
-
-    content = getattr(block, "content", "")
-    # MCP returns a list of typed parts; flatten the text ones for display.
-    if isinstance(content, list):
-        text = "\n".join(
-            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
-        )
-        kv("parts", len(content), indent=6, width=9)
-    else:
-        text = str(content)
-    kv("size", f"{len(text):,} chars", indent=6, width=9)
-    shown, note = clip(text, full, TOOL_RESULT_CHARS)
     body(shown, indent=8, colour="dim")
     if note:
         print(f"        {c(note, 'dim')}")
 
 
-def render_answer(text: str) -> None:
-    print(f"\n  {c('▸ answer', 'green', 'bold')}")
-    body(text, indent=6)
+def render_tool_use(block: ToolUseBlock, full: bool, last: bool) -> None:
+    render_block_label("ToolUseBlock", c(block.name, "yellow"), last)
+    print(f"        {c('.id'.ljust(14), 'dim')}{block.id}")
+    print(f"        {c('.name'.ljust(14), 'dim')}{block.name}")
+    pretty = json.dumps(block.input, indent=2, ensure_ascii=False)
+    shown, note = clip(pretty, full, TOOL_INPUT_CHARS)
+    print(f"        {c('.input', 'dim')}")
+    body(shown, indent=10)
+    if note:
+        print(f"          {c(note, 'dim')}")
+    print(f"\n      {c('Claude REQUESTS this call here. It does not execute anything.', 'dim')}")
+
+
+def render_tool_result(block, full: bool, last: bool) -> None:
+    is_error = bool(getattr(block, "is_error", False))
+    render_block_label("ToolResultBlock",
+                       c("is_error", "red") if is_error else "", last)
+    tuid = getattr(block, "tool_use_id", "?")
+    print(f"        {c('.tool_use_id'.ljust(14), 'dim')}{tuid}"
+          f"  {c('← pairs with the ToolUseBlock above', 'dim')}")
+    print(f"        {c('.is_error'.ljust(14), 'dim')}{getattr(block, 'is_error', None)}")
+
+    content = getattr(block, "content", "")
+    if isinstance(content, list):
+        text = "\n".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+        )
+        shape = f"list of {len(content)} part(s), {len(text):,} chars"
+    else:
+        text = str(content)
+        shape = f"str, {len(text):,} chars"
+    print(f"        {c('.content'.ljust(14), 'dim')}{c(shape, 'dim')}")
+    shown, note = clip(text, full, TOOL_RESULT_CHARS)
+    body(shown, indent=10, colour="dim")
+    if note:
+        print(f"          {c(note, 'dim')}")
+
+
+def render_text(block: TextBlock, last: bool) -> None:
+    render_block_label("TextBlock", f"{len(block.text):,} chars", last)
+    body(block.text, indent=8)
 
 
 def render_summary(m: ResultMessage) -> None:
-    """Every number here is labelled with the field it came from."""
-    rule("SUMMARY", "cyan")
-    print(f"  {c('ResultMessage', 'dim')}\n")
+    """Token counts appear once, in the API's own snake_case."""
+    rule("ResultMessage", "cyan")
+    print(f"  {c('the run is over', 'dim')}\n")
 
     ok = not m.is_error
     print(f"  {c('subtype'.ljust(37), 'dim')}"
@@ -259,42 +285,35 @@ def render_summary(m: ResultMessage) -> None:
 
     usage = m.usage or {}
     if usage:
-        print(f"\n  {c('ResultMessage.usage', 'bold')}  {c('(snake_case)', 'dim')}")
+        print(f"\n  {c('ResultMessage.usage', 'bold')}  "
+              f"{c('— passed through verbatim from the Anthropic API', 'dim')}")
         for name in ("input_tokens", "output_tokens",
                      "cache_creation_input_tokens", "cache_read_input_tokens"):
             if usage.get(name) is not None:
-                field(f"usage.{name}", num(usage[name]), indent=4)
+                field(name, num(usage[name]), indent=4)
         thinking = (usage.get("output_tokens_details") or {}).get("thinking_tokens")
         if thinking is not None:
-            field("usage.output_tokens_details.thinking_tokens", num(thinking),
-                  indent=4, width=45)
-        # Only worth saying when a cache was populated but never reused.
+            field("output_tokens_details.thinking_tokens", num(thinking), indent=4)
         if usage.get("cache_creation_input_tokens") and not usage.get("cache_read_input_tokens"):
             print(f"    {c('cache written but not read — a repeat run within the', 'dim')}")
             print(f"    {c('cache window would read it back and cost less', 'dim')}")
 
-    # model_usage uses camelCase for the SAME quantities. Not a typo — worth
-    # knowing, because the two dicts sit on the same message.
+    # model_usage repeats the same token counts under camelCase names; those are
+    # deliberately NOT reprinted. Only what exists nowhere else is shown.
     for name, mu in (m.model_usage or {}).items():
         get = mu.get if isinstance(mu, dict) else (lambda k, d=None: getattr(mu, k, d))
-        print(f"\n  {c(f'ResultMessage.model_usage[{name!r}]', 'bold')}  "
-              f"{c('(camelCase — note the difference)', 'dim')}")
-        for key in ("inputTokens", "outputTokens", "cacheCreationInputTokens",
-                    "cacheReadInputTokens", "contextWindow", "maxOutputTokens"):
+        print(f"\n  {c('ResultMessage.model_usage', 'bold')}  "
+              f"{c('— computed locally; not in the API response', 'dim')}")
+        for key in ("contextWindow", "maxOutputTokens", "provider"):
             if get(key) is not None:
                 field(key, num(get(key)), indent=4)
-        if get("costUSD") is not None:
-            field("costUSD", f"${get('costUSD'):.6f}", indent=4)
-
         window = get("contextWindow")
         used = ((get("inputTokens") or 0) + (get("cacheCreationInputTokens") or 0)
                 + (get("cacheReadInputTokens") or 0))
         if window:
-            print(f"\n  {c('computed (not an SDK field)', 'bold')}")
+            print(f"\n  {c('computed here, not an SDK field', 'bold')}")
             field("context used", num(used), indent=4,
                   note=f"{used / window:.1%} of contextWindow")
-            print(f"      {c('= inputTokens + cacheCreationInputTokens '
-                             '+ cacheReadInputTokens', 'dim')}")
 
     denials = m.permission_denials or []
     if denials:
@@ -350,47 +369,56 @@ async def main() -> None:
         allowed_tools=ALLOWED_TOOLS,
     )
 
-    rule("QUESTION")
-    body(question, indent=2)
+    render_prompt(question)
 
-    turn = 0
-    current_message_id: str | None = None
-    thinking_est: int | None = None
+    seq = 0                       # sequential number for stream messages
+    current_message_id = None
+    thinking_est = None
 
     async for message in query(prompt=question, options=options):
         if raw:
             render_raw(message)
 
-        # --- system: the init banner, plus streaming thinking-token estimates
+        # --- system: init banner, plus streamed thinking-token estimates
         if isinstance(message, SystemMessage):
             if message.subtype == "init":
                 render_init(message.data)
             elif message.subtype == "thinking_tokens":
                 thinking_est = message.data.get("estimated_tokens", thinking_est)
 
-        # --- assistant: thinking, tool requests, and final prose
+        # --- assistant: the model's own output. Blocks sharing a message_id
+        #     belong to one API message, so only open a header when it changes.
         elif isinstance(message, AssistantMessage):
-            # Blocks sharing a message_id belong to one API message — that is
-            # the real turn boundary, not a heuristic.
             if message.message_id != current_message_id:
                 current_message_id = message.message_id
-                turn += 1
-                render_turn_header(turn, message)
-            for block in message.content:
+                seq += 1
+                render_assistant_header(seq, message)
+            blocks = list(message.content)
+            for i, block in enumerate(blocks):
+                last = i == len(blocks) - 1
                 if isinstance(block, ThinkingBlock):
-                    render_thinking(block, thinking_est, full)
+                    render_thinking(block, thinking_est, full, last)
                     thinking_est = None
                 elif isinstance(block, ToolUseBlock):
-                    render_tool_use(block, full)
+                    render_tool_use(block, full, last)
                 elif isinstance(block, TextBlock):
-                    render_answer(block.text)
+                    render_text(block, last)
 
-        # --- user: tool results are handed back as a user-role turn
+        # --- user: a separate message, NOT part of the assistant's. This is
+        #     where a tool result re-enters the conversation.
         elif isinstance(message, UserMessage):
+            seq += 1
+            current_message_id = None      # the next assistant reply is new
+            render_user_header(seq, message)
             blocks = message.content if isinstance(message.content, list) else [message.content]
-            for block in blocks:
+            for i, block in enumerate(blocks):
+                last = i == len(blocks) - 1
                 if type(block).__name__ == "ToolResultBlock":
-                    render_tool_result(block, full)
+                    render_tool_result(block, full, last)
+                elif isinstance(block, TextBlock):
+                    render_text(block, last)
+                else:
+                    render_block_label(type(block).__name__, "", last)
 
         # --- result: the run is over
         elif isinstance(message, ResultMessage):

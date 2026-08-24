@@ -15,248 +15,194 @@ topics this step covers and what to look at.
 ## 1. What you'll build
 
 ```console
-$ uv run python research_agent.py "latest stable release of Rust?"
+$ uv run python research_agent.py "Search the web: latest stable Go version?"
 ```
 
-```
-──SESSION INIT ──────────────────────────────────────────────────────
-  SystemMessage(subtype='init').data
+141 lines showing the conversation as what it actually is — **a list of messages, each with a
+role** — rather than a stream of prose:
 
-  session_id              9161772a-24f0-447a-8f8a-ec6c7526f778
+```
+──PROMPT ────────────────────────────────────────────────────────────
+  Not a stream message. This is the string passed to query(); it
+  becomes the first user turn of the conversation.
+
+  Search the web: latest stable Go version?
+
+──SESSION INIT · SystemMessage(subtype='init') ──────────────────────
+  session_id              a2dd210b-fc87-40aa-9b44-4019a7ff00e3
   model                   claude-haiku-4-5-20251001
   apiKeySource            ANTHROPIC_API_KEY
-  permissionMode          default
-  claude_code_version     2.1.239
 
   mcp_servers
     ● linkup               connected
-
   tools  4 discovered · 1 in allowed_tools
-    · mcp__linkup__linkup-fetch
-    · mcp__linkup__linkup-get-research
-    · mcp__linkup__linkup-research
     ✓ mcp__linkup__linkup-search  ← allowed
 
-──TURN 1 ────────────────────────────────────────────────────────────
-  AssistantMessage
+──[1] AssistantMessage ──────────────────────────────────────────────
+  the model speaking — its output
 
-  message_id                           msg_011CeNC2Rdd6pGomgo8yF51s
-  model                                claude-haiku-4-5-20251001
-  usage.input_tokens                        3,217
+  message_id                           msg_011CeNDULfKXWikKZxU4RRkq
+  usage.input_tokens                        3,214
   usage.cache_creation_input_tokens             0
-  usage.cache_read_input_tokens                 0
-  usage.service_tier                     standard
 
-  ▸ thinking  298 chars · ~146 tokens
-      This is current information that would benefit from a real-time
-      web search since releases are continuous...
+  ▸ ThinkingBlock  260 chars · ~136 tokens
+        The user is asking me to search the web... I should use the
+        linkup-search function to find this information.
 
-  ▸ tool call  mcp__linkup__linkup-search
-      id       toolu_01LjksD4f1e5LP6SfCmhVu3U
-      input
-        { "query": "latest stable release version" }
+  ▸ ToolUseBlock  mcp__linkup__linkup-search
+        .id           toolu_01UV97iYi2dVguZKSFWX9MMH
+        .name         mcp__linkup__linkup-search
+        .input
+          { "query": "latest stable Go version" }
 
-  ▸ tool result  ← toolu_01LjksD4f1e5LP6SfCmhVu3U
-      parts    1
-      size     36,130 chars
-        { "results": [ { "name": "...", ...
-        … truncated, 36,130 chars total (use --full)
+      Claude REQUESTS this call here. It does not execute anything.
 
-──TURN 2 ────────────────────────────────────────────────────────────
-  AssistantMessage
+──[2] UserMessage ───────────────────────────────────────────────────
+  NOT you, and not the model. The SDK ran the tool and is handing
+  the result back as a USER turn — the model's next input.
 
-  message_id                           msg_011CeNC2dP46Ja8o3wEd1WSd
+  ▸ ToolResultBlock
+        .tool_use_id  toolu_01UV97iYi2dVguZKSFWX9MMH  ← pairs with above
+        .is_error     None
+        .content      list of 1 part(s), 36,130 chars
+          { "results": [ { "name": "Golang Latest Version", ...
+          … truncated, 36,130 chars total (use --full)
+
+──[3] AssistantMessage ──────────────────────────────────────────────
   usage.input_tokens                           10
-  usage.cache_creation_input_tokens        14,027
-  usage.cache_read_input_tokens                 0
+  usage.cache_creation_input_tokens        14,033
 
-  ▸ thinking  810 chars · ~274 tokens
-  ▸ answer
-      Go 1.26 is the current latest stable release...
+  ▸ ThinkingBlock  782 chars · ~267 tokens
+  ▸ TextBlock  729 chars
+        Based on the search results, the latest stable Go version is
+        **Go 1.26.6**...
 
-──SUMMARY ───────────────────────────────────────────────────────────
-  ResultMessage
-
+──ResultMessage ─────────────────────────────────────────────────────
   subtype                              success
   stop_reason                          end_turn
-  is_error                             False
   num_turns                                     2
-  duration_ms                               8,505  = 8.51 s
-  duration_api_ms                           8,237  = 8.24 s
-  total_cost_usd                        $0.024669
+  duration_ms                               7,596  = 7.60 s
+  total_cost_usd                        $0.024551
 
-  ResultMessage.usage  (snake_case)
-    usage.input_tokens                        3,224
-    usage.output_tokens                         590
-    usage.cache_creation_input_tokens        14,027
-    usage.cache_read_input_tokens                 0
-    usage.output_tokens_details.thinking_tokens   275
+  ResultMessage.usage  — passed through verbatim from the Anthropic API
+    input_tokens                              3,224
+    output_tokens                               565
+    cache_creation_input_tokens              14,033
+    cache_read_input_tokens                       0
+    output_tokens_details.thinking_tokens       302
 
-  ResultMessage.model_usage['claude-haiku-4-5-20251001']  (camelCase — note the difference)
-    inputTokens                               4,125
-    outputTokens                                602
-    cacheCreationInputTokens                 14,027
-    cacheReadInputTokens                          0
+  ResultMessage.model_usage  — computed locally; not in the API response
     contextWindow                           200,000
     maxOutputTokens                          32,000
-    costUSD                               $0.024669
+    provider                             firstParty
 
-  computed (not an SDK field)
-    context used                             18,152  9.1% of contextWindow
-      = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
+  computed here, not an SDK field
+    context used                             18,158  9.1% of contextWindow
 ```
-
-Look at the two turn headers together. Turn 1 pays `usage.input_tokens 3,217`; turn 2 pays only
-`10`, but writes **14,027 tokens into `usage.cache_creation_input_tokens`** — that is the tool
-result being absorbed. The whole economics of the run is legible from four lines.
-
-The agentic loop from step 01's diagram is no longer a diagram. It is the output.
 
 ---
 
 ## 2. New concepts
 
-### 2.1 The full message stream
+### 2.1 A conversation is a list of messages, each with a role
 
-Step 01 handled three message types and silently dropped the rest. Here is everything that actually
-arrives, in order:
+This is the thing worth taking away from the step. A Claude conversation is not a transcript of
+prose — it is an ordered list of **messages**, and each message's *type* is its role:
 
-| Message | Carries | Step 01 |
+| Class | Whose turn it is |
+|---|---|
+| `UserMessage` | Input **to** the model |
+| `AssistantMessage` | Output **from** the model |
+| `SystemMessage` | The harness talking about the run, not part of the conversation |
+| `ResultMessage` | A summary emitted once the run finishes |
+
+Neither `UserMessage` nor `AssistantMessage` has a `role` field, because **the class is the role**.
+
+### 2.2 Who actually runs the tool
+
+Follow messages [1] → [2] → [3] in the output above and the answer is unambiguous:
+
+1. **`[1] AssistantMessage`** contains a `ToolUseBlock`. The model has *asked* for
+   `linkup-search` with `{"query": "latest stable Go version"}`. It has executed nothing — a
+   language model cannot make a network call.
+2. **The SDK** reads that block, calls the Linkup MCP server, and gets 36,130 characters back.
+3. **`[2] UserMessage`** carries the answer in a `ToolResultBlock`. It is a **user** message
+   because, from the model's point of view, a tool result is *input handed to it* — the same role
+   your original question occupies.
+4. **`[3] AssistantMessage`** is the model reading that input and replying.
+
+So the loop is: **the model requests, your code executes, the result goes back as a user turn.**
+That single sentence is most of Domain 1.
+
+`ToolUseBlock.id` and `ToolResultBlock.tool_use_id` are the same string — that pairing is what
+lets several tools run in parallel and still be matched to their requests.
+
+### 2.3 The prompt is not in the stream
+
+The string you pass to `query()` never comes back as a `UserMessage`. It becomes the conversation's
+first user turn on the other side of the subprocess, but the stream you iterate starts with the
+model's reply. The script prints it under `──PROMPT` and **says it is not a stream message**, so
+you do not go hunting for something that was never emitted.
+
+### 2.4 Blocks, and how they arrive
+
+A message's `.content` is a **list of blocks**, not a string, because one message can mix kinds:
+
+| Block | Field to read | Appears in |
 |---|---|---|
-| `SystemMessage` `subtype="init"` | Session id, model, cwd, auth source, MCP status, **the full tool inventory** | status only |
-| `SystemMessage` `subtype="thinking_tokens"` | A running estimate of thinking tokens, streamed | dropped |
-| `AssistantMessage` → `ThinkingBlock` | The model's reasoning before it acts | **dropped** |
-| `AssistantMessage` → `ToolUseBlock` | `.name`, `.id`, and `.input` — the actual arguments | name only |
-| `UserMessage` → `ToolResultBlock` | `.content`, `.is_error`, `.tool_use_id` | **dropped** |
-| `AssistantMessage` → `TextBlock` | Prose for the user | shown |
-| `ResultMessage` | Outcome, turns, timings, session id, tokens, cost | subtype + cost |
+| `ThinkingBlock` | `.thinking` | `AssistantMessage` |
+| `TextBlock` | `.text` | either |
+| `ToolUseBlock` | `.id`, `.name`, `.input` | `AssistantMessage` |
+| `ToolResultBlock` | `.tool_use_id`, `.content`, `.is_error` | `UserMessage` |
 
-Two of those are worth pausing on.
+A wrinkle worth knowing: the SDK often delivers **one block per `AssistantMessage`**, with several
+such objects sharing a single `message_id`. So "one API message" and "one object you receive" are
+not the same thing — group by `message_id` when you care about the former.
 
-**Tool results arrive as a `UserMessage`.** Counter-intuitive until you think in roles: the result
-is *input handed to the model*, so it occupies a user turn. That is also why `num_turns` is 2 for a
-single search — request, then answer.
+### 2.5 Thinking blocks
 
-**`ToolUseBlock.id` pairs with `ToolResultBlock.tool_use_id`.** With one tool call you can ignore
-this. The moment an agent fires several in parallel, that id is the only thing telling you which
-result belongs to which request — which is why this step prints both.
-
-### 2.2 Thinking blocks
-
-Haiku 4.5 reasons before it acts, and that reasoning is a real block in the stream. It is worth
-reading: in one of the runs above the model decided **not** to search —
+Haiku 4.5 reasons before it acts, and that reasoning is a real block you can read. In one run the
+model decided **not** to search:
 
 > *"I know from my training data that the capital of Malta is Valletta… I can answer this directly
 > without needing to use the search tools."*
 
-That is the tool-selection decision, in the model's own words, before it happens. When an agent
+That is the tool-selection decision in the model's own words, *before* it happens. When an agent
 picks the wrong tool, this is the first place to look.
 
-### 2.3 Discovered vs. allowed tools
+### 2.6 Discovered vs. allowed tools
 
-The init message lists **4** Linkup tools. We allow **1**. Step 01 asserted that `allowed_tools`
-narrows what Claude may call; here you can see the gap directly, which makes the least-privilege
-argument concrete rather than theoretical.
+The init message lists **4** Linkup tools; we allow **1**. Step 01 argued that scoping tools
+matters; here the gap is on screen.
 
-### 2.4 Observability as a first-class output
+### 2.7 Field names, and the casing question
 
-`ResultMessage` carries far more than cost:
+Every label in the output is a **real SDK field name** — `usage.input_tokens`, `duration_ms`,
+`contextWindow` — because those are what you write in code and what a certification asks about.
+Anything derived is filed under **`computed here, not an SDK field`** so you never revise a
+calculated number into memory as a real one.
 
-| Field | Why you care |
-|---|---|
-| `num_turns` | Did the agent loop? How many times? |
-| `duration_ms` / `duration_api_ms` | Total vs. time actually spent in the API — the gap is your overhead |
-| `session_id` | The handle for resuming a conversation (step 03) |
-| `stop_reason` | `end_turn` = finished; anything else needs investigating |
-| `usage` | Token counts **and cache behaviour** |
-| `permission_denials` | Tools Claude wanted but was not allowed |
-
-### 2.5 What a turn can and cannot tell you
-
-Each turn header shows the facts that are genuinely per-message:
-
-```
-──TURN 2 ─────────────────────────────────────────
-  AssistantMessage
-
-  message_id                           msg_011CeNC2dP46Ja8o3wEd1WSd
-  model                                claude-haiku-4-5-20251001
-  usage.input_tokens                           10
-  usage.cache_creation_input_tokens        14,027
-  usage.cache_read_input_tokens                 0
-  usage.service_tier                     standard
-```
-
-Compare that with turn 1 (`usage.input_tokens 3,217`, cache creation `0`) and the mechanic is
-visible: turn 1 pays for the prompt, then the 36,000-character tool result is **written into the
-cache** so turn 2 re-reads almost nothing as fresh input.
-
-Two fields are deliberately **not** shown per turn, because the SDK does not report them
-meaningfully at that level:
-
-| Field | Why not |
-|---|---|
-| `output_tokens` | Per-message it reports a *snapshot*, not a tally — a run totalling 697 output tokens showed `5` and `1` on its two messages. Printing it per turn would look authoritative and be wrong. |
-| `stop_reason` | `None` on every `AssistantMessage` in this mode; only the final `ResultMessage` carries it. |
-
-Both appear correctly in the **SUMMARY**. Knowing *which* numbers a stream can be trusted for is
-the actual skill here — an observability layer that prints a plausible wrong number is worse than
-one that prints nothing.
-
-### 2.6 Every label here is a real field name
-
-The output deliberately uses **the SDK's own field names**, not friendly ones. `usage.input_tokens`,
-not "input"; `duration_ms`, not "duration"; `costUSD`, not "cost". You are meant to come away
-knowing the names, because those are what you write in code — and what a certification asks about.
-
-Anything the script works out itself is filed under **`computed (not an SDK field)`** with its
-formula shown, so you never mistake a derived number for one the SDK reported:
-
-```
-  computed (not an SDK field)
-    context used                             18,152  9.1% of contextWindow
-      = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
-```
-
-**The casing trap.** The same quantities appear under two different conventions on the *same*
-message:
-
-| Quantity | `ResultMessage.usage` | `ResultMessage.model_usage[model]` |
-|---|---|---|
-| input tokens | `input_tokens` | `inputTokens` |
-| output tokens | `output_tokens` | `outputTokens` |
-| cache written | `cache_creation_input_tokens` | `cacheCreationInputTokens` |
-| cache read | `cache_read_input_tokens` | `cacheReadInputTokens` |
-| cost | *(absent)* | `costUSD` |
-| context size | *(absent)* | `contextWindow` |
-
-`usage` is **snake_case**; `model_usage` is **camelCase**. The `init` payload mixes both in one
-dict — `session_id` sits next to `apiKeySource`. This is not a typo in the tutorial, and guessing
-the wrong casing is the kind of error that costs you a debugging session.
-
-**Why they differ, which makes it memorable.** The two conventions are just naming styles —
-`snake_case` uses underscores and is the norm in Python and in REST/JSON APIs; `camelCase` uses a
-capital letter and is the norm in JavaScript and TypeScript. Both appear here because the two
-dictionaries come from **different sides of a boundary**, and the SDK's own type declarations say
-so:
+You may notice two naming styles. `snake_case` (underscores) is the Python and REST convention;
+`camelCase` (a capital letter) is the JavaScript one. Both appear because the two objects come from
+**opposite sides of the subprocess boundary**, and the SDK's own types say so:
 
 ```
 ResultMessage.usage        →  dict[str, Any]           ← untyped: whatever the API sent
 ResultMessage.model_usage  →  dict[str, ModelUsage]    ← a TypedDict the SDK declares
 ```
 
-`usage` is passed through **verbatim from the Anthropic API**, which is snake_case. `model_usage`
-is assembled by the **Claude Code CLI** (§2.2 — the subprocess), which is TypeScript, hence
-camelCase.
+`usage` is passed through verbatim from the **Anthropic API**, which is snake_case. `model_usage`
+is assembled by the **Claude Code CLI**, which is TypeScript, hence camelCase. The giveaway is its
+contents: `costUSD`, `contextWindow`, `provider` — **the API returns none of those**. It reports
+tokens and has no idea what you are paying.
 
-The giveaway is what `model_usage` contains: `costUSD`, `contextWindow`, `maxOutputTokens`,
-`provider`. **The API returns none of those** — it reports tokens and has no idea what you are
-paying. Cost is computed locally from a pricing table, and the context window is model metadata the
-CLI already knows. So `model_usage` cannot be a passthrough; it is the tooling's own roll-up.
+**`model_usage` also repeats every token count under camelCase names. This script does not print
+them twice.** Token counts appear once, in `usage`, in the API's own casing; `model_usage` shows
+only what exists nowhere else. Seeing `input_tokens` and `inputTokens` side by side teaches nothing
+except that you can be confused in two languages.
 
-Which gives you a rule worth carrying: **casing tells you which layer you are touching.**
-snake_case is raw API output; camelCase was computed for you by the tooling — so don't go hunting
-for a camelCase field in the Anthropic API reference, because it is not there.
+The rule worth keeping: **casing tells you which layer you are touching.** camelCase means the
+tooling computed it, so do not go looking for that field in the Anthropic API reference.
 
 ---
 
@@ -348,22 +294,33 @@ not: tool results need aggressive clipping, reasoning needs none. Hence three co
 
 The note always states the **real size**, because a truncation you cannot see is a lie.
 
-### 4.3 Tracking turns, properly
+### 4.3 One section per message, not per "turn"
+
+An earlier version of this step drew `TURN 1` / `TURN 2` headers and rendered the tool result
+underneath the assistant's — which quietly told the reader that a tool result is part of the
+assistant's message. **It is not.** It is a separate `UserMessage`.
+
+The loop now opens a new section whenever the message *type* changes:
 
 ```python
-if message.message_id != current_message_id:
-    current_message_id = message.message_id
-    turn += 1
-    render_turn_header(turn, message)
+elif isinstance(message, AssistantMessage):
+    if message.message_id != current_message_id:
+        current_message_id = message.message_id
+        seq += 1
+        render_assistant_header(seq, message)
+    ...
+
+elif isinstance(message, UserMessage):
+    seq += 1
+    current_message_id = None      # the next assistant reply is a new message
+    render_user_header(seq, message)
 ```
 
-The first version of this step guessed at turn boundaries by counting tool results. That worked,
-but it was a heuristic. **`message_id` is the real thing**: blocks sharing an id are one API
-message, so a thinking block and the tool call that follows it belong to the same turn — which is
-why `render_turn_header` only fires when the id changes.
+`message_id` groups the several `AssistantMessage` objects that belong to one API message (§2.4);
+resetting it on a `UserMessage` means the model's next reply correctly opens a new section.
 
-That also gives each turn its own `usage` and `model`, which is where the per-turn token line comes
-from.
+`num_turns` in the summary counts round-trips (2 here), while the sequence counts messages (3).
+Both are shown, because they are different things.
 
 ### 4.4 `--raw`, the escape hatch
 
@@ -435,7 +392,15 @@ model. Watching that difference is the exercise.
 5. **`message_id` beats a heuristic.** Turns were originally reconstructed by counting tool
    results. It gave the right answer, but grouping by `message_id` *is* the boundary rather than a
    proxy for it — and it hands you each turn's `usage` and `model` for free.
-6. **Friendly labels were hiding the thing worth learning.** The display originally read `input`,
+6. **The layout was making a false claim.** Drawing tool results under a `TURN` heading alongside
+   the assistant's thinking implied they were part of the assistant's message. A reader called it
+   out, and they were right: a tool result is a `UserMessage`. The old layout would have taught the
+   wrong mental model to everyone who read it — and no test would ever have caught it, because the
+   code was working perfectly.
+7. **Showing the same number twice under two names is not thoroughness.** Printing both
+   `input_tokens` and `inputTokens` felt rigorous and was just noise. Token counts now appear once;
+   `model_usage` shows only what exists nowhere else.
+8. **Friendly labels were hiding the thing worth learning.** The display originally read `input`,
    `cache write`, `cost`, `duration` — pleasant, and useless for anyone who then has to write the
    code. Switching every label to the real field name surfaced something none of us had noticed:
    `usage` is snake_case while `model_usage` is camelCase, on the same message. A prettier interface
