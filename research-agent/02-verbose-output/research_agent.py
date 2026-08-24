@@ -46,7 +46,13 @@ load_dotenv(Path.home() / ".config" / "linkup" / "linkup.env")
 
 MODEL = "claude-haiku-4-5-20251001"
 ALLOWED_TOOLS = ["mcp__linkup__linkup-search"]
-PREVIEW_CHARS = 600   # how much of a long value to show unless --full
+# Truncation caps, per kind of content. Tool results are the only thing that is
+# reliably enormous (tens of thousands of characters); the model's reasoning and
+# the tool arguments are short and are the interesting part, so they are shown in
+# full at any sane length. --full removes every cap.
+TOOL_RESULT_CHARS = 600
+THINKING_CHARS = 4000
+TOOL_INPUT_CHARS = 2000
 
 
 # ---------------------------------------------------------------- formatting
@@ -106,11 +112,11 @@ def body(text: str, indent: int = 6, colour: str | None = None) -> None:
             print(pad + (c(line, colour) if colour else line))
 
 
-def clip(text: str, full: bool) -> tuple[str, str]:
-    """Return (shown_text, note) — truncating unless --full was passed."""
-    if full or len(text) <= PREVIEW_CHARS:
+def clip(text: str, full: bool, limit: int) -> tuple[str, str]:
+    """Return (shown_text, note) — truncating at `limit` unless --full was passed."""
+    if full or len(text) <= limit:
         return text, ""
-    return text[:PREVIEW_CHARS], f"… truncated, {len(text):,} chars total (use --full)"
+    return text[:limit], f"… truncated, {len(text):,} chars total (use --full)"
 
 
 def num(n: object) -> str:
@@ -189,7 +195,7 @@ def render_thinking(block: ThinkingBlock, est: int | None, full: bool) -> None:
     if est:
         meta += f" · ~{est:,} tokens"
     print(f"\n  {c('▸ thinking', 'magenta', 'bold')}  {c(meta, 'dim')}")
-    shown, note = clip(block.thinking, full)
+    shown, note = clip(block.thinking, full, THINKING_CHARS)
     body(shown, colour="dim")
     if note:
         print(f"      {c(note, 'dim')}")
@@ -199,7 +205,7 @@ def render_tool_use(block: ToolUseBlock, full: bool) -> None:
     print(f"\n  {c('▸ tool call', 'yellow', 'bold')}  {c(block.name, 'yellow')}")
     kv("id", c(block.id, "dim"), indent=6, width=9)
     pretty = json.dumps(block.input, indent=2, ensure_ascii=False)
-    shown, note = clip(pretty, full)
+    shown, note = clip(pretty, full, TOOL_INPUT_CHARS)
     print(f"      {c('input', 'dim')}")
     body(shown, indent=8)
     if note:
@@ -222,7 +228,7 @@ def render_tool_result(block, full: bool) -> None:
     else:
         text = str(content)
     kv("size", f"{len(text):,} chars", indent=6, width=9)
-    shown, note = clip(text, full)
+    shown, note = clip(text, full, TOOL_RESULT_CHARS)
     body(shown, indent=8, colour="dim")
     if note:
         print(f"        {c(note, 'dim')}")

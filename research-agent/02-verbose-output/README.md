@@ -248,10 +248,22 @@ uv run python research_agent.py "your research question"
 
 Two flags, both about *how much* you see:
 
+**The default already shows every turn and every message.** Nothing is dropped — only *long values*
+are clipped, and the caps differ by what the value is:
+
+| Content | Cap | Why |
+|---|---|---|
+| Tool results | 600 chars | Reliably enormous — a single web search returns 36,000–48,000 characters and would bury everything else |
+| The model's thinking | 4,000 chars | Short and the most interesting part of the run; effectively never clipped |
+| Tool arguments | 2,000 chars | Usually a single line |
+| The answer | never clipped | It is the point |
+
+A clipped value always states its real size, so truncation is never silent.
+
 | Flag | Effect |
 |---|---|
-| `--full` | Turns off truncation. By default any value over 600 characters is clipped with a note giving its real size — a tool result can be 40,000+ characters and would bury everything else. `--full` prints all of it. |
-| `--raw` | Additionally dumps **every message in the stream as JSON**, before the formatted view. This is the escape hatch: if the pretty output hides something, `--raw` shows the object exactly as the SDK delivered it. |
+| `--full` | Removes every cap, including tool results. Expect ~700 lines. |
+| `--raw` | Additionally dumps **every message in the stream as JSON** before the formatted view. The escape hatch: if the pretty output hides something, `--raw` shows the object exactly as the SDK delivered it. Adds ~1,300 lines. |
 
 ```bash
 uv run python research_agent.py --full "latest stable Go version?"
@@ -289,18 +301,28 @@ Everything else is four small helpers — `c()` for styling, `rule()` for sectio
 aligned pairs, `body()` for wrapped text at an indent. No `rich`, no dependency: the point of this
 step is seeing the message structure, and a formatting library would sit between you and it.
 
-### 4.2 Truncation with an escape hatch
+### 4.2 Truncation, per kind of content
 
 ```python
-def clip(text: str, full: bool) -> tuple[str, str]:
-    if full or len(text) <= PREVIEW_CHARS:
+TOOL_RESULT_CHARS = 600
+THINKING_CHARS = 4000
+TOOL_INPUT_CHARS = 2000
+
+def clip(text: str, full: bool, limit: int) -> tuple[str, str]:
+    if full or len(text) <= limit:
         return text, ""
-    return text[:PREVIEW_CHARS], f"… truncated, {len(text):,} chars total (use --full)"
+    return text[:limit], f"… truncated, {len(text):,} chars total (use --full)"
 ```
 
-That search result was **48,265 characters**. Printing it whole buries everything else, so the
-default clips and *says so, with the real size* — a truncation you cannot see is a lie. `--full`
-turns it off.
+The first version used **one** cap for everything, which was wrong in a way that took a reader to
+notice: at 600 characters it clipped a 1,014-character *thinking block* — the most interesting
+content in the run — with exactly the same rule it used on a 36,000-character tool result.
+
+One cap treats "enormous machine output" and "the model's reasoning" as the same problem. They are
+not: tool results need aggressive clipping, reasoning needs none. Hence three constants, and a
+`limit` parameter rather than a global.
+
+The note always states the **real size**, because a truncation you cannot see is a lie.
 
 ### 4.3 Tracking turns, properly
 
