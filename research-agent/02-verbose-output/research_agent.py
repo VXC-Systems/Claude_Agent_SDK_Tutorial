@@ -7,10 +7,12 @@ tool, receive a result, and finish.
 
 Usage:
     uv run python research_agent.py "your research question"
-    uv run python research_agent.py --full "..."     # no truncation
+    uv run python research_agent.py --full "..."    # no truncation of long values
+    uv run python research_agent.py --raw  "..."    # dump every raw message too
 """
 
 import asyncio
+import dataclasses
 import json
 import os
 import shutil
@@ -104,6 +106,17 @@ def num(n: object) -> str:
     return f"{n:,}" if isinstance(n, int) else str(n)
 
 
+def render_raw(message: object) -> None:
+    """Dump a whole message as JSON — the --raw escape hatch."""
+    try:
+        payload = dataclasses.asdict(message)          # SDK messages are dataclasses
+    except TypeError:
+        payload = {"repr": repr(message)}
+    text = json.dumps(payload, indent=2, default=str, ensure_ascii=False)
+    print(f"\n  {c('▸ raw ' + type(message).__name__, 'dim', 'bold')}")
+    body(text, indent=6, colour="dim")
+
+
 # ------------------------------------------------------------- renderers
 
 def render_init(data: dict) -> None:
@@ -140,6 +153,26 @@ def render_init(data: dict) -> None:
     mem = (data.get("memory_paths") or {}).get("auto")
     if mem:
         print(f"\n  {c('memory path', 'dim')}  {c(mem, 'dim')}")
+
+
+def render_turn_header(turn: int, message: AssistantMessage) -> None:
+    """Open a turn and show the per-message facts that are actually reliable."""
+    rule(f"TURN {turn}", "blue")
+    kv("message", c(message.message_id or "?", "dim"))
+    kv("model", message.model or "?")
+
+    u = message.usage or {}
+    parts = [
+        f"input {num(u.get('input_tokens', 0))}",
+        f"cache write {num(u.get('cache_creation_input_tokens', 0))}",
+        f"cache read {num(u.get('cache_read_input_tokens', 0))}",
+    ]
+    kv("tokens in", c(" · ".join(parts), "dim"))
+    if u.get("service_tier"):
+        kv("tier", c(str(u["service_tier"]), "dim"))
+    # Deliberately not printed per turn: output_tokens (the SDK reports a
+    # snapshot here, not a final tally) and stop_reason (None until the run
+    # ends). Both appear, correctly, in the SUMMARY.
 
 
 def render_thinking(block: ThinkingBlock, est: int | None, full: bool) -> None:
@@ -203,7 +236,7 @@ def render_summary(m: ResultMessage) -> None:
 
     usage = m.usage or {}
     if usage:
-        print(f"\n  {c('Tokens', 'bold')}")
+        print(f"\n  {c('Tokens (whole run)', 'bold')}")
         rows = [
             ("input", usage.get("input_tokens")),
             ("output", usage.get("output_tokens")),
@@ -219,6 +252,21 @@ def render_summary(m: ResultMessage) -> None:
             print(f"    {c('cache written but not read — a repeat run within the', 'dim')}")
             print(f"    {c('cache window would read it back and cost less', 'dim')}")
 
+    # Per-model detail: real cost, and how much of the context window was used.
+    for name, mu in (m.model_usage or {}).items():
+        get = mu.get if isinstance(mu, dict) else lambda k, d=None: getattr(mu, k, d)
+        print(f"\n  {c('Model', 'bold')}  {c(name, 'dim')}")
+        window = get("contextWindow")
+        used = (get("inputTokens") or 0) + (get("cacheCreationInputTokens") or 0) \
+            + (get("cacheReadInputTokens") or 0)
+        if window:
+            print(f"    {c('context'.ljust(13), 'dim')}{num(used):>10}"
+                  f"{c(f' / {num(window)}  ({used / window:.1%})', 'dim')}")
+        if get("maxOutputTokens"):
+            print(f"    {c('max output'.ljust(13), 'dim')}{num(get('maxOutputTokens')):>10}")
+        if get("costUSD") is not None:
+            print(f"    {c('cost'.ljust(13), 'dim')}{'$' + format(get('costUSD'), '.6f'):>10}")
+
     denials = m.permission_denials or []
     if denials:
         print(f"\n  {c('Permission denials', 'yellow', 'bold')}")
@@ -232,7 +280,7 @@ def render_summary(m: ResultMessage) -> None:
 
     if m.total_cost_usd is not None:
         print()
-        kv("cost", c(f"${m.total_cost_usd:.6f}", "bold"))
+        kv("total cost", c(f"${m.total_cost_usd:.6f}", "bold"))
 
 
 # ------------------------------------------------------------------- main
@@ -249,10 +297,12 @@ def require_env(name: str) -> str:
 
 
 async def main() -> None:
-    args = [a for a in sys.argv[1:] if a != "--full"]
+    flags = {"--full", "--raw"}
+    args = [a for a in sys.argv[1:] if a not in flags]
     full = "--full" in sys.argv
+    raw = "--raw" in sys.argv
     if not args:
-        print('Usage: uv run python research_agent.py [--full] "your research question"')
+        print('Usage: uv run python research_agent.py [--full] [--raw] "your question"')
         sys.exit(1)
     question = " ".join(args)
 
@@ -278,11 +328,14 @@ async def main() -> None:
     rule("QUESTION")
     body(question, indent=2)
 
-    turn = 1
+    turn = 0
+    current_message_id: str | None = None
     thinking_est: int | None = None
-    turn_open = False
 
     async for message in query(prompt=question, options=options):
+        if raw:
+            render_raw(message)
+
         # --- system: the init banner, plus streaming thinking-token estimates
         if isinstance(message, SystemMessage):
             if message.subtype == "init":
@@ -292,9 +345,12 @@ async def main() -> None:
 
         # --- assistant: thinking, tool requests, and final prose
         elif isinstance(message, AssistantMessage):
-            if not turn_open:
-                rule(f"TURN {turn}", "blue")
-                turn_open = True
+            # Blocks sharing a message_id belong to one API message — that is
+            # the real turn boundary, not a heuristic.
+            if message.message_id != current_message_id:
+                current_message_id = message.message_id
+                turn += 1
+                render_turn_header(turn, message)
             for block in message.content:
                 if isinstance(block, ThinkingBlock):
                     render_thinking(block, thinking_est, full)
@@ -310,9 +366,6 @@ async def main() -> None:
             for block in blocks:
                 if type(block).__name__ == "ToolResultBlock":
                     render_tool_result(block, full)
-                    # A result closes this turn; the next assistant reply opens the next.
-                    turn += 1
-                    turn_open = False
 
         # --- result: the run is over
         elif isinstance(message, ResultMessage):

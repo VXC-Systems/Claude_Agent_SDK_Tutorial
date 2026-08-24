@@ -35,43 +35,62 @@ $ uv run python research_agent.py "latest stable release of Rust?"
     ✓ mcp__linkup__linkup-search  ← allowed
 
 ──TURN 1 ────────────────────────────────────────────────────────────
+  message      msg_011CeNBViYk1LQNgUhtKLNQ8
+  model        claude-haiku-4-5-20251001
+  tokens in    input 3,217 · cache write 0 · cache read 0
+  tier         standard
 
-  ▸ thinking  322 chars · ~152 tokens
+  ▸ thinking  298 chars · ~146 tokens
       This is current information that would benefit from a real-time web
-      search since Rust releases are continuous...
+      search since releases are continuous...
 
   ▸ tool call  mcp__linkup__linkup-search
-      id       toolu_017ZZ9tFtcHbVJQ37Z7KkFRZ
+      id       toolu_01LjksD4f1e5LP6SfCmhVu3U
       input
-        { "query": "latest stable release version Rust programming language" }
+        { "query": "latest stable release version" }
 
-  ▸ tool result  ← toolu_017ZZ9tFtcHbVJQ37Z7KkFRZ
+  ▸ tool result  ← toolu_01LjksD4f1e5LP6SfCmhVu3U
       parts    1
-      size     48,265 chars
-        { "results": [ { "name": "Rust 1.93.0 released", ...
-        … truncated, 48,265 chars total (use --full)
+      size     36,130 chars
+        { "results": [ { "name": "...", ...
+        … truncated, 36,130 chars total (use --full)
 
 ──TURN 2 ────────────────────────────────────────────────────────────
-  ▸ thinking  1,238 chars · ~381 tokens
+  message      msg_011CeNBYeMowqz5fYwzK6i7D
+  model        claude-haiku-4-5-20251001
+  tokens in    input 10 · cache write 14,045 · cache read 0
+  tier         standard
+
+  ▸ thinking  1,106 chars · ~348 tokens
   ▸ answer
-      The latest stable release of Rust is **1.97.1**...
+      The latest stable version is ...
 
 ──SUMMARY ───────────────────────────────────────────────────────────
   outcome      success · end_turn
   turns        2
-  duration     9.08 s   (API 8.05 s)
+  duration     11.83 s   (API 11.35 s)
+  session      82c2fbfe-1e73-4a09-a7a9-65bc8974eeda
 
-  Tokens
-    input             4,119
-    output              554
-    thinking            212
-    cache write      13,008
+  Tokens (whole run)
+    input             3,224
+    output              697
+    thinking            358
+    cache write      14,041
     cache read            0
     cache written but not read — a repeat run within the
     cache window would read it back and cost less
 
-  cost         $0.023149
+  Model  claude-haiku-4-5-20251001
+    context          18,166 / 200,000  (9.1%)
+    max output       32,000
+    cost          $0.025221
+
+  total cost   $0.025221
 ```
+
+Look at the two turn headers together. Turn 1 pays `input 3,217`; turn 2 pays `input 10` but
+writes **14,045 tokens into the cache** — that is the tool result being absorbed. The whole
+economics of the run is legible from four lines.
 
 The agentic loop from step 01's diagram is no longer a diagram. It is the output.
 
@@ -134,6 +153,34 @@ argument concrete rather than theoretical.
 | `usage` | Token counts **and cache behaviour** |
 | `permission_denials` | Tools Claude wanted but was not allowed |
 
+### 2.5 What a turn can and cannot tell you
+
+Each turn header shows the facts that are genuinely per-message:
+
+```
+──TURN 2 ─────────────────────────────────────────
+  message      msg_011CeNBYeMowqz5fYwzK6i7D
+  model        claude-haiku-4-5-20251001
+  tokens in    input 10 · cache write 14,045 · cache read 0
+  tier         standard
+```
+
+Compare that with turn 1 (`input 3,217 · cache write 0`) and the whole mechanic is visible: turn 1
+pays for the prompt, then the 36,000-character tool result is **written into the cache** so turn 2
+re-reads almost nothing as fresh input.
+
+Two fields are deliberately **not** shown per turn, because the SDK does not report them
+meaningfully at that level:
+
+| Field | Why not |
+|---|---|
+| `output_tokens` | Per-message it reports a *snapshot*, not a tally — a run totalling 697 output tokens showed `5` and `1` on its two messages. Printing it per turn would look authoritative and be wrong. |
+| `stop_reason` | `None` on every `AssistantMessage` in this mode; only the final `ResultMessage` carries it. |
+
+Both appear correctly in the **SUMMARY**. Knowing *which* numbers a stream can be trusted for is
+the actual skill here — an observability layer that prints a plausible wrong number is worse than
+one that prints nothing.
+
 ---
 
 ## 3. Setup
@@ -144,7 +191,27 @@ Nothing new. Same keys, same `.env` at the repository root — see the
 ```bash
 cd research-agent/02-verbose-output
 uv run python research_agent.py "your research question"
-uv run python research_agent.py --full "..."   # no truncation
+```
+
+Two flags, both about *how much* you see:
+
+| Flag | Effect |
+|---|---|
+| `--full` | Turns off truncation. By default any value over 600 characters is clipped with a note giving its real size — a tool result can be 40,000+ characters and would bury everything else. `--full` prints all of it. |
+| `--raw` | Additionally dumps **every message in the stream as JSON**, before the formatted view. This is the escape hatch: if the pretty output hides something, `--raw` shows the object exactly as the SDK delivered it. |
+
+```bash
+uv run python research_agent.py --full "latest stable Go version?"
+```
+
+```bash
+uv run python research_agent.py --raw "What is 2+2?"
+```
+
+They combine, which is the most verbose the script gets:
+
+```bash
+uv run python research_agent.py --full --raw "latest stable Go version?"
 ```
 
 ---
@@ -182,20 +249,37 @@ That search result was **48,265 characters**. Printing it whole buries everythin
 default clips and *says so, with the real size* — a truncation you cannot see is a lie. `--full`
 turns it off.
 
-### 4.3 Tracking turns
+### 4.3 Tracking turns, properly
 
 ```python
-elif type(block).__name__ == "ToolResultBlock":
-    render_tool_result(block, full)
+if message.message_id != current_message_id:
+    current_message_id = message.message_id
     turn += 1
-    turn_open = False
+    render_turn_header(turn, message)
 ```
 
-There is no "turn" field in the stream. A turn boundary *is* a tool result: the model asked for
-something, got it, and now continues. Incrementing there reconstructs the same number
-`ResultMessage.num_turns` reports at the end — a nice check that you understood the loop.
+The first version of this step guessed at turn boundaries by counting tool results. That worked,
+but it was a heuristic. **`message_id` is the real thing**: blocks sharing an id are one API
+message, so a thinking block and the tool call that follows it belong to the same turn — which is
+why `render_turn_header` only fires when the id changes.
 
-### 4.4 Rendering the init banner
+That also gives each turn its own `usage` and `model`, which is where the per-turn token line comes
+from.
+
+### 4.4 `--raw`, the escape hatch
+
+```python
+try:
+    payload = dataclasses.asdict(message)   # SDK messages are dataclasses
+except TypeError:
+    payload = {"repr": repr(message)}
+```
+
+Any pretty renderer is a lossy view — it shows what its author thought mattered. `--raw` dumps the
+message as JSON so you can check the formatted output against the source, and discover fields this
+script ignores. Every finding in §6 came from looking at raw messages first.
+
+### 4.5 Rendering the init banner
 
 `render_init()` pulls the interesting keys out of `message.data`, which is a plain dict. One line
 worth calling out:
@@ -242,6 +326,16 @@ model. Watching that difference is the exercise.
 3. **Verifying one path is not verifying the feature.** The first successful run answered from the
    model's own knowledge, so the tool-call, tool-result and turn-tracking code had never executed.
    It looked finished. Forcing a search exercised the other half.
+4. **Not every field in the stream is trustworthy at the level it appears.** Adding per-turn stats
+   looked like a simple matter of printing `message.usage`. Inspecting a real run first showed
+   `output_tokens` reporting `5` and `1` on two messages of a run that totalled **697** — a
+   snapshot, not a tally — and `stop_reason` sitting at `None` on every assistant message. Both are
+   now shown only in the summary, where they are correct, with the reason written next to the code.
+   Had the display been written from the field names alone, it would have printed confident
+   nonsense.
+5. **`message_id` beats a heuristic.** Turns were originally reconstructed by counting tool
+   results. It gave the right answer, but grouping by `message_id` *is* the boundary rather than a
+   proxy for it — and it hands you each turn's `usage` and `model` for free.
 
 ---
 
@@ -324,9 +418,17 @@ overhead; the token table shows where the budget went.
 
 ### CCAR-P Domain 2 — Models, Prompting & Context Engineering (13%)
 
-**Prompt reuse strategies, including caching.** *Where to look:* `cache write 13,008 / cache read
-0`. Prompt caching is happening whether or not you asked for it, and in a one-shot script it is
-pure cost. Seeing the number is what makes the trade-off arguable.
+**Prompt reuse strategies, including caching.** *Where to look:* the `cache write` / `cache read`
+pair, in both turn headers and the summary. Prompt caching happens whether or not you asked for it,
+and in a one-shot script it is pure cost — written every run, read never. Seeing the number is what
+makes the trade-off arguable rather than theoretical.
+
+**Optimising context windows and managing token usage.** The Professional exam expects you to
+reason about how much of the window a design consumes, not just whether it fits.
+
+*Where to look:* the `context 18,166 / 200,000 (9.1%)` line in the summary, computed from
+`model_usage`. One web search consumed roughly 9% of the window; five would consume half. That is
+the argument for trimming tool output before it accumulates — which is step 03's problem.
 
 ---
 
