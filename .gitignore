@@ -1,0 +1,21 @@
+# Secrets — never commit. Copy .env.example to .env and fill that in instead.
+.env
+.env.*
+!.env.example
+
+# Other credential shapes, for anyone extending this tutorial
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# uv-managed virtual environment
+.venv/
+
+# OS noise
+.DS_Store
