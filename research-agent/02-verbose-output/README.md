@@ -137,14 +137,52 @@ That single sentence is most of Domain 1.
 `ToolUseBlock.id` and `ToolResultBlock.tool_use_id` are the same string — that pairing is what
 lets several tools run in parallel and still be matched to their requests.
 
-### 2.3 The prompt is not in the stream
+### 2.3 Every call resends the whole conversation
+
+The stream shows each message **as it arrives**, which makes it look as though the second call
+sends only the tool result. It does not. **The Claude API is stateless: every request carries the
+entire conversation so far.** The second call above contained:
+
+```
+  user       "Search the web: latest stable Go version?"
+  assistant  thinking + tool_use(linkup-search)
+  user       tool_result — 36,130 characters
+```
+
+…plus the system prompt and the tool definitions. Nothing is remembered server-side.
+
+The token counts prove it, which is why the script prints the sum:
+
+```
+[1]  usage.input_tokens                  3,214
+     usage.cache_creation_input_tokens       0
+     context sent to the model           3,214   computed · first call
+
+[3]  usage.input_tokens                     10
+     usage.cache_creation_input_tokens  14,022
+     context sent to the model          14,032   computed · grew by 10,818
+```
+
+The second call received **14,032 tokens, not 10.** The other 14,022 were *billed* as cache
+creation rather than fresh input — but they were still sent. Those extra 10,818 tokens are turn
+one's output plus that 36,130-character tool result.
+
+This is the central economic fact about agents: **context grows with every turn, and you pay for
+all of it on every call.** A five-search agent is not five times one search, because each call
+re-sends everything before it. Prompt caching is what makes that affordable; trimming tool output
+before it lands is what keeps it small (step 03).
+
+`context sent to the model` is labelled **computed** — it is a sum this script performs, not a
+field the SDK reports.
+
+### 2.4 The prompt is not in the stream
 
 The string you pass to `query()` never comes back as a `UserMessage`. It becomes the conversation's
 first user turn on the other side of the subprocess, but the stream you iterate starts with the
 model's reply. The script prints it under `──PROMPT` and **says it is not a stream message**, so
 you do not go hunting for something that was never emitted.
 
-### 2.4 Blocks, and how they arrive
+### 2.5 Blocks, and how they arrive
 
 A message's `.content` is a **list of blocks**, not a string, because one message can mix kinds:
 
@@ -159,7 +197,7 @@ A wrinkle worth knowing: the SDK often delivers **one block per `AssistantMessag
 such objects sharing a single `message_id`. So "one API message" and "one object you receive" are
 not the same thing — group by `message_id` when you care about the former.
 
-### 2.5 Thinking blocks
+### 2.6 Thinking blocks
 
 Haiku 4.5 reasons before it acts, and that reasoning is a real block you can read. In one run the
 model decided **not** to search:
@@ -170,12 +208,12 @@ model decided **not** to search:
 That is the tool-selection decision in the model's own words, *before* it happens. When an agent
 picks the wrong tool, this is the first place to look.
 
-### 2.6 Discovered vs. allowed tools
+### 2.7 Discovered vs. allowed tools
 
 The init message lists **4** Linkup tools; we allow **1**. Step 01 argued that scoping tools
 matters; here the gap is on screen.
 
-### 2.7 Field names, and the casing question
+### 2.8 Field names, and the casing question
 
 Every label in the output is a **real SDK field name** — `usage.input_tokens`, `duration_ms`,
 `contextWindow` — because those are what you write in code and what a certification asks about.
@@ -203,6 +241,24 @@ except that you can be confused in two languages.
 
 The rule worth keeping: **casing tells you which layer you are touching.** camelCase means the
 tooling computed it, so do not go looking for that field in the Anthropic API reference.
+
+### 2.9 Why `stop_reason` is empty on every turn
+
+Conceptually the agentic loop *is* driven by `stop_reason`: the raw Messages API returns
+`"tool_use"` when the model wants a tool and `"end_turn"` when it is done, and a hand-written loop
+branches on exactly that. The exam tests this.
+
+You will not see the intermediate values here. Measured across a full run: **one `end_turn` in the
+entire stream — on the `ResultMessage` — and `null` on all four `AssistantMessage` objects.**
+
+That is because **the SDK runs the loop for you** (step 01 §2.1). It reads `tool_use`, executes the
+tool, returns the result, and surfaces a `stop_reason` only once the whole run is finished. Know
+the concept for the exam; know that this surface abstracts it. Seeing `"tool_use"` with your own
+eyes means dropping to the raw Messages API, which is a different exercise.
+
+The same applies to `usage.output_tokens`, which reports a *snapshot* per message rather than a
+tally — a run totalling 617 output tokens showed `5` and `1` on its two messages. Both fields are
+correct on the `ResultMessage`, and that is the only place this script prints them.
 
 ---
 
@@ -441,9 +497,10 @@ until it stops for a different reason. It also tests the *anti-patterns* — dec
 by parsing prose, or capping iterations as your primary stopping rule, instead of reading the stop
 signal.
 
-*Where to look:* the `TURN 1` / `TURN 2` headers and `stop_reason: end_turn` in the summary. Step
-01 covered this as a diagram; here the loop is literally the transcript. Note that the run ends
-because the model stopped asking for tools — not because the script counted anything.
+*Where to look:* the `[1]` / `[2]` / `[3]` message sections and `stop_reason: end_turn` in the
+`ResultMessage`. Step 01 covered this as a diagram; here the loop is the transcript. Note **§2.9**
+for the wrinkle that matters on the exam: the per-message `stop_reason` the API defines is not
+surfaced by this SDK, because the SDK is the thing reading it.
 
 ### CCAR-F Domain 2 — Tool Design & MCP Integration (18%)
 
