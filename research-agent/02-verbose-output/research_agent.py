@@ -80,8 +80,19 @@ def rule(title: str, colour: str = "cyan") -> None:
 
 
 def kv(key: str, value: object, indent: int = 2, width: int = 13) -> None:
-    """One aligned key/value line."""
+    """One aligned key/value line, for prose labels."""
     print(f"{' ' * indent}{c(key.ljust(width), 'dim')}{value}")
+
+
+def field(name: str, value: object, indent: int = 2, width: int = 37,
+          note: str = "") -> None:
+    """One aligned line whose label is the REAL SDK field name.
+
+    Used everywhere a number comes straight off a message, so the name you read
+    here is the name you use in code (and are asked about in the exam).
+    """
+    tail = f"  {c(note, 'dim')}" if note else ""
+    print(f"{' ' * indent}{c(name.ljust(width), 'dim')}{str(value):>10}{tail}")
 
 
 def body(text: str, indent: int = 6, colour: str | None = None) -> None:
@@ -122,15 +133,13 @@ def render_raw(message: object) -> None:
 def render_init(data: dict) -> None:
     """The one-off session banner: identity, servers, and tool inventory."""
     rule("SESSION INIT")
-    kv("session", data.get("session_id", "?"))
-    kv("model", data.get("model", "?"))
-    kv("cwd", data.get("cwd", "?"))
-    kv("auth via", data.get("apiKeySource", "?"))
-    kv("permission", data.get("permissionMode", "?"))
-    kv("cli", data.get("claude_code_version", "?"))
+    print(f"  {c('SystemMessage(subtype=\'init\').data', 'dim')}\n")
+    for key in ("session_id", "model", "cwd", "apiKeySource",
+                "permissionMode", "claude_code_version"):
+        print(f"  {c(key.ljust(24), 'dim')}{data.get(key, '?')}")
 
     servers = data.get("mcp_servers", [])
-    print(f"\n  {c('MCP servers', 'bold')}")
+    print(f"\n  {c('mcp_servers', 'bold')}")
     for s in servers:
         status = s.get("status", "?")
         colour = {"connected": "green", "failed": "red", "needs-auth": "yellow"}.get(status, "dim")
@@ -139,8 +148,8 @@ def render_init(data: dict) -> None:
         print(f"    {c('(none)', 'dim')}")
 
     tools = data.get("tools", [])
-    print(f"\n  {c('Tools', 'bold')}  "
-          f"{c(f'{len(tools)} discovered · {len(ALLOWED_TOOLS)} allowed', 'dim')}")
+    print(f"\n  {c('tools', 'bold')}  "
+          f"{c(f'{len(tools)} discovered · {len(ALLOWED_TOOLS)} in allowed_tools', 'dim')}")
     for t in tools:
         if t in ALLOWED_TOOLS:
             print(f"    {c('✓', 'green')} {t}  {c('← allowed', 'green', 'dim')}")
@@ -152,25 +161,25 @@ def render_init(data: dict) -> None:
     # Direct evidence for step 01's claim that saved memory is keyed by cwd.
     mem = (data.get("memory_paths") or {}).get("auto")
     if mem:
-        print(f"\n  {c('memory path', 'dim')}  {c(mem, 'dim')}")
+        print(f"\n  {c('memory_paths.auto'.ljust(24), 'dim')}{c(mem, 'dim')}")
 
 
 def render_turn_header(turn: int, message: AssistantMessage) -> None:
     """Open a turn and show the per-message facts that are actually reliable."""
     rule(f"TURN {turn}", "blue")
-    kv("message", c(message.message_id or "?", "dim"))
-    kv("model", message.model or "?")
+    print(f"  {c('AssistantMessage', 'dim')}\n")
+    print(f"  {c('message_id'.ljust(37), 'dim')}{message.message_id or '?'}")
+    print(f"  {c('model'.ljust(37), 'dim')}{message.model or '?'}")
 
+    # AssistantMessage.usage — snake_case, unlike model_usage. Real names only.
     u = message.usage or {}
-    parts = [
-        f"input {num(u.get('input_tokens', 0))}",
-        f"cache write {num(u.get('cache_creation_input_tokens', 0))}",
-        f"cache read {num(u.get('cache_read_input_tokens', 0))}",
-    ]
-    kv("tokens in", c(" · ".join(parts), "dim"))
+    for name in ("input_tokens", "cache_creation_input_tokens",
+                 "cache_read_input_tokens"):
+        field(f"usage.{name}", num(u.get(name, 0)))
     if u.get("service_tier"):
-        kv("tier", c(str(u["service_tier"]), "dim"))
-    # Deliberately not printed per turn: output_tokens (the SDK reports a
+        print(f"  {c('usage.service_tier'.ljust(37), 'dim')}"
+              f"{str(u['service_tier']):>10}")
+    # Deliberately not printed per turn: usage.output_tokens (the SDK reports a
     # snapshot here, not a final tally) and stop_reason (None until the run
     # ends). Both appear, correctly, in the SUMMARY.
 
@@ -225,62 +234,72 @@ def render_answer(text: str) -> None:
 
 
 def render_summary(m: ResultMessage) -> None:
+    """Every number here is labelled with the field it came from."""
     rule("SUMMARY", "cyan")
+    print(f"  {c('ResultMessage', 'dim')}\n")
+
     ok = not m.is_error
-    kv("outcome", f"{c(m.subtype, 'green' if ok else 'red', 'bold')}"
-                  f"{c(' · ' + m.stop_reason, 'dim') if m.stop_reason else ''}")
-    kv("turns", m.num_turns)
-    kv("duration", f"{m.duration_ms / 1000:.2f} s"
-                   f"{c(f'   (API {m.duration_api_ms / 1000:.2f} s)', 'dim')}")
-    kv("session", c(m.session_id, "dim"))
+    print(f"  {c('subtype'.ljust(37), 'dim')}"
+          f"{c(m.subtype, 'green' if ok else 'red', 'bold')}")
+    print(f"  {c('stop_reason'.ljust(37), 'dim')}{m.stop_reason}")
+    print(f"  {c('is_error'.ljust(37), 'dim')}{m.is_error}")
+    field("num_turns", m.num_turns)
+    field("duration_ms", num(m.duration_ms), note=f"= {m.duration_ms / 1000:.2f} s")
+    field("duration_api_ms", num(m.duration_api_ms),
+          note=f"= {m.duration_api_ms / 1000:.2f} s")
+    print(f"  {c('session_id'.ljust(37), 'dim')}{m.session_id}")
+    if m.total_cost_usd is not None:
+        field("total_cost_usd", f"${m.total_cost_usd:.6f}")
 
     usage = m.usage or {}
     if usage:
-        print(f"\n  {c('Tokens (whole run)', 'bold')}")
-        rows = [
-            ("input", usage.get("input_tokens")),
-            ("output", usage.get("output_tokens")),
-            ("thinking", (usage.get("output_tokens_details") or {}).get("thinking_tokens")),
-            ("cache write", usage.get("cache_creation_input_tokens")),
-            ("cache read", usage.get("cache_read_input_tokens")),
-        ]
-        for name, value in rows:
-            if value is not None:
-                print(f"    {c(name.ljust(13), 'dim')}{num(value):>10}")
-        # Only worth saying when a cache was actually populated but not reused.
+        print(f"\n  {c('ResultMessage.usage', 'bold')}  {c('(snake_case)', 'dim')}")
+        for name in ("input_tokens", "output_tokens",
+                     "cache_creation_input_tokens", "cache_read_input_tokens"):
+            if usage.get(name) is not None:
+                field(f"usage.{name}", num(usage[name]), indent=4)
+        thinking = (usage.get("output_tokens_details") or {}).get("thinking_tokens")
+        if thinking is not None:
+            field("usage.output_tokens_details.thinking_tokens", num(thinking),
+                  indent=4, width=45)
+        # Only worth saying when a cache was populated but never reused.
         if usage.get("cache_creation_input_tokens") and not usage.get("cache_read_input_tokens"):
             print(f"    {c('cache written but not read — a repeat run within the', 'dim')}")
             print(f"    {c('cache window would read it back and cost less', 'dim')}")
 
-    # Per-model detail: real cost, and how much of the context window was used.
+    # model_usage uses camelCase for the SAME quantities. Not a typo — worth
+    # knowing, because the two dicts sit on the same message.
     for name, mu in (m.model_usage or {}).items():
-        get = mu.get if isinstance(mu, dict) else lambda k, d=None: getattr(mu, k, d)
-        print(f"\n  {c('Model', 'bold')}  {c(name, 'dim')}")
-        window = get("contextWindow")
-        used = (get("inputTokens") or 0) + (get("cacheCreationInputTokens") or 0) \
-            + (get("cacheReadInputTokens") or 0)
-        if window:
-            print(f"    {c('context'.ljust(13), 'dim')}{num(used):>10}"
-                  f"{c(f' / {num(window)}  ({used / window:.1%})', 'dim')}")
-        if get("maxOutputTokens"):
-            print(f"    {c('max output'.ljust(13), 'dim')}{num(get('maxOutputTokens')):>10}")
+        get = mu.get if isinstance(mu, dict) else (lambda k, d=None: getattr(mu, k, d))
+        print(f"\n  {c(f'ResultMessage.model_usage[{name!r}]', 'bold')}  "
+              f"{c('(camelCase — note the difference)', 'dim')}")
+        for key in ("inputTokens", "outputTokens", "cacheCreationInputTokens",
+                    "cacheReadInputTokens", "contextWindow", "maxOutputTokens"):
+            if get(key) is not None:
+                field(key, num(get(key)), indent=4)
         if get("costUSD") is not None:
-            print(f"    {c('cost'.ljust(13), 'dim')}{'$' + format(get('costUSD'), '.6f'):>10}")
+            field("costUSD", f"${get('costUSD'):.6f}", indent=4)
+
+        window = get("contextWindow")
+        used = ((get("inputTokens") or 0) + (get("cacheCreationInputTokens") or 0)
+                + (get("cacheReadInputTokens") or 0))
+        if window:
+            print(f"\n  {c('computed (not an SDK field)', 'bold')}")
+            field("context used", num(used), indent=4,
+                  note=f"{used / window:.1%} of contextWindow")
+            print(f"      {c('= inputTokens + cacheCreationInputTokens '
+                             '+ cacheReadInputTokens', 'dim')}")
 
     denials = m.permission_denials or []
     if denials:
-        print(f"\n  {c('Permission denials', 'yellow', 'bold')}")
+        print(f"\n  {c('permission_denials', 'yellow', 'bold')}")
         for d in denials:
             print(f"    {d}")
 
     if m.errors:
-        print(f"\n  {c('Errors', 'red', 'bold')}")
+        print(f"\n  {c('errors', 'red', 'bold')}")
         for e in m.errors:
             print(f"    {c(str(e), 'red')}")
-
-    if m.total_cost_usd is not None:
-        print()
-        kv("total cost", c(f"${m.total_cost_usd:.6f}", "bold"))
 
 
 # ------------------------------------------------------------------- main

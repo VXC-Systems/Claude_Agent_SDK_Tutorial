@@ -20,29 +20,36 @@ $ uv run python research_agent.py "latest stable release of Rust?"
 
 ```
 ──SESSION INIT ──────────────────────────────────────────────────────
-  session      bd95ae3f-a72e-4414-a235-7aeaa5f20eae
-  model        claude-haiku-4-5-20251001
-  auth via     ANTHROPIC_API_KEY
-  cli          2.1.239
+  SystemMessage(subtype='init').data
 
-  MCP servers
+  session_id              9161772a-24f0-447a-8f8a-ec6c7526f778
+  model                   claude-haiku-4-5-20251001
+  apiKeySource            ANTHROPIC_API_KEY
+  permissionMode          default
+  claude_code_version     2.1.239
+
+  mcp_servers
     ● linkup               connected
 
-  Tools  4 discovered · 1 allowed
+  tools  4 discovered · 1 in allowed_tools
     · mcp__linkup__linkup-fetch
     · mcp__linkup__linkup-get-research
     · mcp__linkup__linkup-research
     ✓ mcp__linkup__linkup-search  ← allowed
 
 ──TURN 1 ────────────────────────────────────────────────────────────
-  message      msg_011CeNBViYk1LQNgUhtKLNQ8
-  model        claude-haiku-4-5-20251001
-  tokens in    input 3,217 · cache write 0 · cache read 0
-  tier         standard
+  AssistantMessage
+
+  message_id                           msg_011CeNC2Rdd6pGomgo8yF51s
+  model                                claude-haiku-4-5-20251001
+  usage.input_tokens                        3,217
+  usage.cache_creation_input_tokens             0
+  usage.cache_read_input_tokens                 0
+  usage.service_tier                     standard
 
   ▸ thinking  298 chars · ~146 tokens
-      This is current information that would benefit from a real-time web
-      search since releases are continuous...
+      This is current information that would benefit from a real-time
+      web search since releases are continuous...
 
   ▸ tool call  mcp__linkup__linkup-search
       id       toolu_01LjksD4f1e5LP6SfCmhVu3U
@@ -56,41 +63,52 @@ $ uv run python research_agent.py "latest stable release of Rust?"
         … truncated, 36,130 chars total (use --full)
 
 ──TURN 2 ────────────────────────────────────────────────────────────
-  message      msg_011CeNBYeMowqz5fYwzK6i7D
-  model        claude-haiku-4-5-20251001
-  tokens in    input 10 · cache write 14,045 · cache read 0
-  tier         standard
+  AssistantMessage
 
-  ▸ thinking  1,106 chars · ~348 tokens
+  message_id                           msg_011CeNC2dP46Ja8o3wEd1WSd
+  usage.input_tokens                           10
+  usage.cache_creation_input_tokens        14,027
+  usage.cache_read_input_tokens                 0
+
+  ▸ thinking  810 chars · ~274 tokens
   ▸ answer
-      The latest stable version is ...
+      Go 1.26 is the current latest stable release...
 
 ──SUMMARY ───────────────────────────────────────────────────────────
-  outcome      success · end_turn
-  turns        2
-  duration     11.83 s   (API 11.35 s)
-  session      82c2fbfe-1e73-4a09-a7a9-65bc8974eeda
+  ResultMessage
 
-  Tokens (whole run)
-    input             3,224
-    output              697
-    thinking            358
-    cache write      14,041
-    cache read            0
-    cache written but not read — a repeat run within the
-    cache window would read it back and cost less
+  subtype                              success
+  stop_reason                          end_turn
+  is_error                             False
+  num_turns                                     2
+  duration_ms                               8,505  = 8.51 s
+  duration_api_ms                           8,237  = 8.24 s
+  total_cost_usd                        $0.024669
 
-  Model  claude-haiku-4-5-20251001
-    context          18,166 / 200,000  (9.1%)
-    max output       32,000
-    cost          $0.025221
+  ResultMessage.usage  (snake_case)
+    usage.input_tokens                        3,224
+    usage.output_tokens                         590
+    usage.cache_creation_input_tokens        14,027
+    usage.cache_read_input_tokens                 0
+    usage.output_tokens_details.thinking_tokens   275
 
-  total cost   $0.025221
+  ResultMessage.model_usage['claude-haiku-4-5-20251001']  (camelCase — note the difference)
+    inputTokens                               4,125
+    outputTokens                                602
+    cacheCreationInputTokens                 14,027
+    cacheReadInputTokens                          0
+    contextWindow                           200,000
+    maxOutputTokens                          32,000
+    costUSD                               $0.024669
+
+  computed (not an SDK field)
+    context used                             18,152  9.1% of contextWindow
+      = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
 ```
 
-Look at the two turn headers together. Turn 1 pays `input 3,217`; turn 2 pays `input 10` but
-writes **14,045 tokens into the cache** — that is the tool result being absorbed. The whole
-economics of the run is legible from four lines.
+Look at the two turn headers together. Turn 1 pays `usage.input_tokens 3,217`; turn 2 pays only
+`10`, but writes **14,027 tokens into `usage.cache_creation_input_tokens`** — that is the tool
+result being absorbed. The whole economics of the run is legible from four lines.
 
 The agentic loop from step 01's diagram is no longer a diagram. It is the output.
 
@@ -159,15 +177,19 @@ Each turn header shows the facts that are genuinely per-message:
 
 ```
 ──TURN 2 ─────────────────────────────────────────
-  message      msg_011CeNBYeMowqz5fYwzK6i7D
-  model        claude-haiku-4-5-20251001
-  tokens in    input 10 · cache write 14,045 · cache read 0
-  tier         standard
+  AssistantMessage
+
+  message_id                           msg_011CeNC2dP46Ja8o3wEd1WSd
+  model                                claude-haiku-4-5-20251001
+  usage.input_tokens                           10
+  usage.cache_creation_input_tokens        14,027
+  usage.cache_read_input_tokens                 0
+  usage.service_tier                     standard
 ```
 
-Compare that with turn 1 (`input 3,217 · cache write 0`) and the whole mechanic is visible: turn 1
-pays for the prompt, then the 36,000-character tool result is **written into the cache** so turn 2
-re-reads almost nothing as fresh input.
+Compare that with turn 1 (`usage.input_tokens 3,217`, cache creation `0`) and the mechanic is
+visible: turn 1 pays for the prompt, then the 36,000-character tool result is **written into the
+cache** so turn 2 re-reads almost nothing as fresh input.
 
 Two fields are deliberately **not** shown per turn, because the SDK does not report them
 meaningfully at that level:
@@ -180,6 +202,37 @@ meaningfully at that level:
 Both appear correctly in the **SUMMARY**. Knowing *which* numbers a stream can be trusted for is
 the actual skill here — an observability layer that prints a plausible wrong number is worse than
 one that prints nothing.
+
+### 2.6 Every label here is a real field name
+
+The output deliberately uses **the SDK's own field names**, not friendly ones. `usage.input_tokens`,
+not "input"; `duration_ms`, not "duration"; `costUSD`, not "cost". You are meant to come away
+knowing the names, because those are what you write in code — and what a certification asks about.
+
+Anything the script works out itself is filed under **`computed (not an SDK field)`** with its
+formula shown, so you never mistake a derived number for one the SDK reported:
+
+```
+  computed (not an SDK field)
+    context used                             18,152  9.1% of contextWindow
+      = inputTokens + cacheCreationInputTokens + cacheReadInputTokens
+```
+
+**The casing trap.** The same quantities appear under two different conventions on the *same*
+message:
+
+| Quantity | `ResultMessage.usage` | `ResultMessage.model_usage[model]` |
+|---|---|---|
+| input tokens | `input_tokens` | `inputTokens` |
+| output tokens | `output_tokens` | `outputTokens` |
+| cache written | `cache_creation_input_tokens` | `cacheCreationInputTokens` |
+| cache read | `cache_read_input_tokens` | `cacheReadInputTokens` |
+| cost | *(absent)* | `costUSD` |
+| context size | *(absent)* | `contextWindow` |
+
+`usage` is **snake_case**; `model_usage` is **camelCase**. The `init` payload mixes both in one
+dict — `session_id` sits next to `apiKeySource`. This is not a typo in the tutorial, and guessing
+the wrong casing is the kind of error that costs you a debugging session.
 
 ---
 
@@ -336,6 +389,11 @@ model. Watching that difference is the exercise.
 5. **`message_id` beats a heuristic.** Turns were originally reconstructed by counting tool
    results. It gave the right answer, but grouping by `message_id` *is* the boundary rather than a
    proxy for it — and it hands you each turn's `usage` and `model` for free.
+6. **Friendly labels were hiding the thing worth learning.** The display originally read `input`,
+   `cache write`, `cost`, `duration` — pleasant, and useless for anyone who then has to write the
+   code. Switching every label to the real field name surfaced something none of us had noticed:
+   `usage` is snake_case while `model_usage` is camelCase, on the same message. A prettier interface
+   had been quietly concealing an API detail that will bite in practice.
 
 ---
 
@@ -426,9 +484,27 @@ makes the trade-off arguable rather than theoretical.
 **Optimising context windows and managing token usage.** The Professional exam expects you to
 reason about how much of the window a design consumes, not just whether it fits.
 
-*Where to look:* the `context 18,166 / 200,000 (9.1%)` line in the summary, computed from
-`model_usage`. One web search consumed roughly 9% of the window; five would consume half. That is
-the argument for trimming tool output before it accumulates — which is step 03's problem.
+*Where to look:* the `computed (not an SDK field)` block in the summary, derived from
+`model_usage.contextWindow`. One web search consumed roughly 9% of the window; five would consume
+half. That is the argument for trimming tool output before it accumulates — step 03's problem.
+
+### Knowing the field names themselves
+
+Both exams test the SDK's actual surface, not a paraphrase of it. Every number this step prints is
+labelled with the field it came from, so reading the output *is* revision. The ones worth being
+able to name without looking them up:
+
+| Object | Fields |
+|---|---|
+| `ResultMessage` | `subtype`, `stop_reason`, `is_error`, `num_turns`, `duration_ms`, `duration_api_ms`, `session_id`, `total_cost_usd`, `usage`, `model_usage`, `permission_denials`, `result` |
+| `ResultMessage.usage` | `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens_details.thinking_tokens` |
+| `ResultMessage.model_usage[model]` | `inputTokens`, `outputTokens`, `cacheCreationInputTokens`, `cacheReadInputTokens`, `contextWindow`, `maxOutputTokens`, `costUSD` |
+| `AssistantMessage` | `content`, `model`, `message_id`, `session_id`, `usage`, `stop_reason`, `parent_tool_use_id` |
+| Blocks | `TextBlock.text` · `ThinkingBlock.thinking` · `ToolUseBlock.id/.name/.input` · `ToolResultBlock.tool_use_id/.content/.is_error` |
+| `SystemMessage(subtype="init").data` | `session_id`, `model`, `cwd`, `tools`, `mcp_servers`, `apiKeySource`, `permissionMode`, `memory_paths` |
+
+And the trap from §2.6: **`usage` is snake_case, `model_usage` is camelCase**, for the same
+quantities, on the same message.
 
 ---
 
