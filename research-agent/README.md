@@ -8,10 +8,12 @@ complete, runnable program — not a draft of the next one.
 | Step | Shape | Status |
 |---|---|---|
 | [`01-one-shot/`](01-one-shot/) | One question in, one answer out. No conversation state. | Done |
-| `02-multiturn-chat/` | Interactive terminal chat, using the SDK's persistent-session client (`ClaudeSDKClient`) so follow-up questions build on earlier answers. | Not written yet |
+| [`02-verbose-output/`](02-verbose-output/) | The same agent, fully instrumented — thinking, tool calls and arguments, tool results, timings, tokens, cache and cost. | Done |
+| `03-multiturn-chat/` | Interactive terminal chat, using the SDK's persistent-session client (`ClaudeSDKClient`) so follow-up questions build on earlier answers. | Not written yet |
 
 Start at [step 01](01-one-shot/) — it introduces the agentic loop, MCP, tools and permissions from
-scratch, and later steps assume it.
+scratch, and later steps assume it. Step 02 keeps the same agent and changes only what you can see
+of it, which is the cheapest way to learn the message stream.
 
 ## Setup
 

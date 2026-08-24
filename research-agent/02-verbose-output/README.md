@@ -1,0 +1,357 @@
+# Step 02 — The same agent, with everything visible
+
+Step 01 printed four lines. This step prints everything the agent actually does: what it thinks,
+which tool it picks and with what arguments, what came back, how long it took, and what it cost.
+
+**The agent is unchanged.** Same model, same MCP server, same isolation switches, same one-shot
+`query()`. Only the rendering is different — which is the point: an agent you cannot observe is an
+agent you cannot debug.
+
+Part of the [CCAR-F / CCAR-P preparation track](../../EXAM-COVERAGE.md); §8 explains which exam
+topics this step covers and what to look at.
+
+---
+
+## 1. What you'll build
+
+```console
+$ uv run python research_agent.py "latest stable release of Rust?"
+```
+
+```
+──SESSION INIT ──────────────────────────────────────────────────────
+  session      bd95ae3f-a72e-4414-a235-7aeaa5f20eae
+  model        claude-haiku-4-5-20251001
+  auth via     ANTHROPIC_API_KEY
+  cli          2.1.239
+
+  MCP servers
+    ● linkup               connected
+
+  Tools  4 discovered · 1 allowed
+    · mcp__linkup__linkup-fetch
+    · mcp__linkup__linkup-get-research
+    · mcp__linkup__linkup-research
+    ✓ mcp__linkup__linkup-search  ← allowed
+
+──TURN 1 ────────────────────────────────────────────────────────────
+
+  ▸ thinking  322 chars · ~152 tokens
+      This is current information that would benefit from a real-time web
+      search since Rust releases are continuous...
+
+  ▸ tool call  mcp__linkup__linkup-search
+      id       toolu_017ZZ9tFtcHbVJQ37Z7KkFRZ
+      input
+        { "query": "latest stable release version Rust programming language" }
+
+  ▸ tool result  ← toolu_017ZZ9tFtcHbVJQ37Z7KkFRZ
+      parts    1
+      size     48,265 chars
+        { "results": [ { "name": "Rust 1.93.0 released", ...
+        … truncated, 48,265 chars total (use --full)
+
+──TURN 2 ────────────────────────────────────────────────────────────
+  ▸ thinking  1,238 chars · ~381 tokens
+  ▸ answer
+      The latest stable release of Rust is **1.97.1**...
+
+──SUMMARY ───────────────────────────────────────────────────────────
+  outcome      success · end_turn
+  turns        2
+  duration     9.08 s   (API 8.05 s)
+
+  Tokens
+    input             4,119
+    output              554
+    thinking            212
+    cache write      13,008
+    cache read            0
+    cache written but not read — a repeat run within the
+    cache window would read it back and cost less
+
+  cost         $0.023149
+```
+
+The agentic loop from step 01's diagram is no longer a diagram. It is the output.
+
+---
+
+## 2. New concepts
+
+### 2.1 The full message stream
+
+Step 01 handled three message types and silently dropped the rest. Here is everything that actually
+arrives, in order:
+
+| Message | Carries | Step 01 |
+|---|---|---|
+| `SystemMessage` `subtype="init"` | Session id, model, cwd, auth source, MCP status, **the full tool inventory** | status only |
+| `SystemMessage` `subtype="thinking_tokens"` | A running estimate of thinking tokens, streamed | dropped |
+| `AssistantMessage` → `ThinkingBlock` | The model's reasoning before it acts | **dropped** |
+| `AssistantMessage` → `ToolUseBlock` | `.name`, `.id`, and `.input` — the actual arguments | name only |
+| `UserMessage` → `ToolResultBlock` | `.content`, `.is_error`, `.tool_use_id` | **dropped** |
+| `AssistantMessage` → `TextBlock` | Prose for the user | shown |
+| `ResultMessage` | Outcome, turns, timings, session id, tokens, cost | subtype + cost |
+
+Two of those are worth pausing on.
+
+**Tool results arrive as a `UserMessage`.** Counter-intuitive until you think in roles: the result
+is *input handed to the model*, so it occupies a user turn. That is also why `num_turns` is 2 for a
+single search — request, then answer.
+
+**`ToolUseBlock.id` pairs with `ToolResultBlock.tool_use_id`.** With one tool call you can ignore
+this. The moment an agent fires several in parallel, that id is the only thing telling you which
+result belongs to which request — which is why this step prints both.
+
+### 2.2 Thinking blocks
+
+Haiku 4.5 reasons before it acts, and that reasoning is a real block in the stream. It is worth
+reading: in one of the runs above the model decided **not** to search —
+
+> *"I know from my training data that the capital of Malta is Valletta… I can answer this directly
+> without needing to use the search tools."*
+
+That is the tool-selection decision, in the model's own words, before it happens. When an agent
+picks the wrong tool, this is the first place to look.
+
+### 2.3 Discovered vs. allowed tools
+
+The init message lists **4** Linkup tools. We allow **1**. Step 01 asserted that `allowed_tools`
+narrows what Claude may call; here you can see the gap directly, which makes the least-privilege
+argument concrete rather than theoretical.
+
+### 2.4 Observability as a first-class output
+
+`ResultMessage` carries far more than cost:
+
+| Field | Why you care |
+|---|---|
+| `num_turns` | Did the agent loop? How many times? |
+| `duration_ms` / `duration_api_ms` | Total vs. time actually spent in the API — the gap is your overhead |
+| `session_id` | The handle for resuming a conversation (step 03) |
+| `stop_reason` | `end_turn` = finished; anything else needs investigating |
+| `usage` | Token counts **and cache behaviour** |
+| `permission_denials` | Tools Claude wanted but was not allowed |
+
+---
+
+## 3. Setup
+
+Nothing new. Same keys, same `.env` at the repository root — see the
+[project README](../../README.md) and [step 01 §3](../01-one-shot/README.md#3-setup).
+
+```bash
+cd research-agent/02-verbose-output
+uv run python research_agent.py "your research question"
+uv run python research_agent.py --full "..."   # no truncation
+```
+
+---
+
+## 4. The code
+
+The agent half is **identical to step 01** — same `ClaudeAgentOptions`, same isolation switches,
+same `async for`. Read step 01 for that. What follows is only what is new.
+
+### 4.1 Terminal formatting without dependencies
+
+```python
+def _supports_colour() -> bool:
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+```
+
+Colour is applied only when writing to a real terminal, so piping to a file or `grep` produces
+clean text instead of escape codes. `NO_COLOR` is a
+[cross-tool convention](https://no-color.org/) worth honouring.
+
+Everything else is four small helpers — `c()` for styling, `rule()` for section headers, `kv()` for
+aligned pairs, `body()` for wrapped text at an indent. No `rich`, no dependency: the point of this
+step is seeing the message structure, and a formatting library would sit between you and it.
+
+### 4.2 Truncation with an escape hatch
+
+```python
+def clip(text: str, full: bool) -> tuple[str, str]:
+    if full or len(text) <= PREVIEW_CHARS:
+        return text, ""
+    return text[:PREVIEW_CHARS], f"… truncated, {len(text):,} chars total (use --full)"
+```
+
+That search result was **48,265 characters**. Printing it whole buries everything else, so the
+default clips and *says so, with the real size* — a truncation you cannot see is a lie. `--full`
+turns it off.
+
+### 4.3 Tracking turns
+
+```python
+elif type(block).__name__ == "ToolResultBlock":
+    render_tool_result(block, full)
+    turn += 1
+    turn_open = False
+```
+
+There is no "turn" field in the stream. A turn boundary *is* a tool result: the model asked for
+something, got it, and now continues. Incrementing there reconstructs the same number
+`ResultMessage.num_turns` reports at the end — a nice check that you understood the loop.
+
+### 4.4 Rendering the init banner
+
+`render_init()` pulls the interesting keys out of `message.data`, which is a plain dict. One line
+worth calling out:
+
+```python
+mem = (data.get("memory_paths") or {}).get("auto")
+```
+
+That prints the path Claude Code would load saved memory from — and it resolves under the temp
+directory we set as `cwd`. **This is direct evidence for step 01's third isolation finding**, which
+was established from behaviour alone: the memory selection really is keyed to the working
+directory. The banner shows the mechanism, not just its symptom.
+
+---
+
+## 5. Running it
+
+Try a question the model can answer alone, then one it cannot:
+
+```bash
+uv run python research_agent.py "What is the capital of Malta?"
+uv run python research_agent.py "What is the latest stable release of Rust?"
+```
+
+The first finishes in **one turn with no tool call** — and the thinking block tells you why. The
+second runs two turns with a search in between. Same code, different behaviour, decided by the
+model. Watching that difference is the exercise.
+
+---
+
+## 6. What we learned building it
+
+1. **The stream is much richer than step 01 suggested.** Thinking blocks, streamed token
+   estimates, and full tool results were all arriving and being silently dropped. A message type
+   you do not handle is not an error — which makes it easy to be unaware of what you are missing.
+2. **A conditional message can lie if you get the condition wrong.** The cache hint originally
+   printed "cache was written, not read" whenever the read count was zero — including runs where
+   *nothing was cached at all*. Caught by running a query that used no cache. The fix is checking
+   that a cache was actually created:
+   ```python
+   if usage.get("cache_creation_input_tokens") and not usage.get("cache_read_input_tokens"):
+   ```
+   A wrong explanation is worse than no explanation, because the reader believes it.
+3. **Verifying one path is not verifying the feature.** The first successful run answered from the
+   model's own knowledge, so the tool-call, tool-result and turn-tracking code had never executed.
+   It looked finished. Forcing a search exercised the other half.
+
+---
+
+## 7. Design notes
+
+- **Observability is cheap here and expensive later.** Every number displayed already existed in
+  the stream; the only cost is printing it. In production the same fields are what you would ship
+  to logs or a dashboard — `duration_api_ms`, `num_turns` and `usage` are the three that tell you
+  whether an agent is behaving.
+- **Truncate loudly, never silently.** A clipped value that does not announce its real size will
+  eventually be mistaken for the whole value.
+- **Degrade gracefully.** `isatty()` and `NO_COLOR` mean the same script is useful interactively
+  and in a pipeline. An agent script that only works in a terminal is half a tool.
+- **Cost is a design signal.** The summary shows ~13,000 tokens of cache *written* and none read.
+  In a one-shot script that write is pure overhead; it only pays off when a session is reused —
+  which is the argument for step 03.
+
+**What this design is not.** Output goes to stdout as text, not structured logs. There is no
+`--json` mode, no persistence, and no redaction — everything the tool returns is printed, so do not
+point this at a tool handling sensitive data without adding one.
+
+---
+
+## 8. Exam topics covered
+
+This step is unusually dense in exam terms, because *observing* the loop is how most of Domain 1
+gets assessed. For the tutorial-wide picture see [`EXAM-COVERAGE.md`](../../EXAM-COVERAGE.md).
+
+### CCAR-F Domain 1 — Agentic Architecture & Orchestration (27% of the exam)
+
+**Topic 1.1 — the agentic loop.** The exam expects you to know the loop's lifecycle: a request goes
+to Claude, you inspect why it stopped, execute any tool it asked for, return the result, and repeat
+until it stops for a different reason. It also tests the *anti-patterns* — deciding you are finished
+by parsing prose, or capping iterations as your primary stopping rule, instead of reading the stop
+signal.
+
+*Where to look:* the `TURN 1` / `TURN 2` headers and `stop_reason: end_turn` in the summary. Step
+01 covered this as a diagram; here the loop is literally the transcript. Note that the run ends
+because the model stopped asking for tools — not because the script counted anything.
+
+### CCAR-F Domain 2 — Tool Design & MCP Integration (18%)
+
+**Topic 2.3 — tool distribution and capability bloat.** The exam's claim is that giving an agent
+more tools degrades its selection reliability, and that scoping each agent to what its role needs
+is the fix.
+
+*Where to look:* `Tools  4 discovered · 1 allowed`. This is the same lesson as step 01's
+`tools=[]`, but now measurable rather than argued.
+
+**Topic 2.4 — MCP server integration.** Knowing that tools from configured servers are discovered
+at connection time and become available together.
+
+*Where to look:* the `MCP servers` block and the tool inventory — both come from a single `init`
+message emitted before Claude does anything.
+
+### CCAR-F Domain 5 — Context Management & Reliability (15%)
+
+**Topic 5.1 — managing conversation context.** The exam is concerned with tool results accumulating
+in context and consuming tokens out of proportion to their relevance — a 40-field response where 5
+fields matter.
+
+*Where to look:* `size 48,265 chars` on the tool result, against `input 4,119` tokens in the
+summary. That single search dominates the context budget. This step only *shows* the problem;
+trimming tool output before it accumulates is step 03's concern.
+
+**Topic 5.3 — error propagation.** Distinguishing a failed call from a successful call that
+returned nothing.
+
+*Where to look:* `is_error` on the tool result changes the label to `▸ tool error` in red, and
+`permission_denials` appears in the summary when Claude wanted a tool it was not allowed.
+
+### CCAR-P Domain 4 — Evaluation, Testing & Optimization (16%)
+
+**Monitoring with logging and observability; optimising token, latency and cost trade-offs.** The
+Professional exam asks you to justify configuration decisions against measurements rather than
+intuition.
+
+*Where to look:* the entire summary block. `duration` vs `(API …)` separates model time from your
+overhead; the token table shows where the budget went.
+
+### CCAR-P Domain 2 — Models, Prompting & Context Engineering (13%)
+
+**Prompt reuse strategies, including caching.** *Where to look:* `cache write 13,008 / cache read
+0`. Prompt caching is happening whether or not you asked for it, and in a one-shot script it is
+pure cost. Seeing the number is what makes the trade-off arguable.
+
+---
+
+## 9. Rough edges
+
+- **stdout only.** No `--json` mode, so this is readable but not machine-parseable. A CI-facing
+  version would want structured output.
+- **No redaction.** Tool results print verbatim. Fine for web search; not fine for a tool returning
+  customer data.
+- **Thinking blocks are model-dependent.** Haiku 4.5 emits them here; a different model or setting
+  may not, and the section simply will not appear.
+- **Turn tracking is inferred**, not read from the stream. It matches `num_turns` in every run
+  observed, but it is reconstruction rather than ground truth.
+- Still one-shot: no memory between runs.
+
+---
+
+## 10. Next
+
+**Step 03 — multi-turn chat.** Replace one-shot `query()` with `ClaudeSDKClient` so the session
+stays open, follow-up questions build on earlier answers, and that 13,000-token cache write finally
+gets read back.
+
+### Reference
+
+- [Python SDK reference](https://code.claude.com/docs/en/agent-sdk/python)
+- [Streaming vs. single-turn](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)
+- [MCP configuration](https://code.claude.com/docs/en/agent-sdk/mcp)

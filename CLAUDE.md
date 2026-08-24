@@ -39,9 +39,29 @@ Every step README follows the same shape, so readers learn where to look:
 | Running it | Including what correct output looks like |
 | **What we learned** | What broke, and why. Required — the section other tutorials lack |
 | Design notes | Trade-offs and what the design does *not* handle (CCAR-P level) |
-| Exam mapping | Specific task statements from the published exam guides |
+| **Exam topics covered** | See below — required in every step |
 | Rough edges | Honest limitations, kept rather than hidden |
 | Next | One line |
+
+### The "Exam topics covered" section
+
+**Every step must have one, and it must teach rather than index.** A bare table of task-statement
+numbers is not enough — a learner cannot act on `2.3` alone. For each topic covered, give three
+things:
+
+1. **What the exam expects you to know** — the concept in plain words, paraphrased, including the
+   anti-pattern it tests where there is one.
+2. **Where to look in this step** — the specific output line, code block, or section that
+   demonstrates it, so the learner can go and see it.
+3. **How fully it is covered** — say plainly when a step only *shows* a problem that a later step
+   solves. Overclaiming coverage is the failure mode here.
+
+Group by exam and domain, and include the domain weight — it tells the learner how much the topic
+is worth. Cover CCAR-P objectives alongside CCAR-F ones where the step earns it.
+
+**Never reproduce exam-guide text, questions, or answers.** Paraphrase topics in your own words;
+the guides are distributed through the Anthropic Partner Academy and are not public. Keep
+[`EXAM-COVERAGE.md`](EXAM-COVERAGE.md) in sync whenever a step changes what is covered.
 
 ## Definition of done for a step
 

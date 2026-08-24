@@ -527,42 +527,64 @@ the answer is any good. Those are deliberate omissions at this step, not oversig
 
 ---
 
-## 8. Exam mapping
+## 8. Exam topics covered
 
-This step maps to these published objectives. Section numbers refer to the exam guides, which are
-distributed through the **Anthropic Partner Academy** and are **not publicly downloadable** — if
-you don't have access, treat this section as orientation rather than something you can check.
+What this step demonstrates, and where to look for it. For the tutorial-wide picture see
+[`EXAM-COVERAGE.md`](../../EXAM-COVERAGE.md). Topics are paraphrased — the guides are distributed
+through the Anthropic Partner Academy and are not public, and nothing here reproduces their text or
+any exam content.
 
-For the whole picture across every step — what is taught, planned, or out of scope — see
-[`EXAM-COVERAGE.md`](../../EXAM-COVERAGE.md).
+### CCAR-F Domain 1 — Agentic Architecture & Orchestration (27% of the exam)
 
-**Claude Certified Architect – Foundations (CCAR-F)**
+**Topic 1.1 — agentic loops.** You are expected to know the loop's lifecycle: send a request,
+inspect why the model stopped, run any tool it asked for, feed the result back, repeat. The exam
+also tests the anti-patterns — deciding you are done by reading prose, or using an iteration cap as
+your main stopping rule, rather than the stop signal.
 
-| Domain | Task statement | Where in this step |
-|---|---|---|
-| 1 — Agentic Architecture & Orchestration (27%) | 1.1 Design and implement agentic loops | §2.1, §4.6 — the loop, and the SDK running it for you |
-| 2 — Tool Design & MCP Integration (18%) | 2.3 Distribute tools and configure tool choice | §4.5 and §6 finding 1 — capability bloat degrading tool selection |
-| 2 | 2.4 Integrate MCP servers into agent workflows | §2.4, §4.5, §6 finding 2 — HTTP transport, naming, project vs user scope |
-| 5 — Context Management & Reliability (15%) | 5.3 Error propagation | §3.5, §4.7 — surfacing MCP connection status |
+*Where to look:* §2.1 for the loop, §4.6 for `query()` running it on your behalf. **Partial
+coverage** — here the loop is described; step 02 makes it visible in the output.
 
-The measurement in §6 finding 2 is a direct demonstration of Task 2.4's *"project-level
-(`.mcp.json`) … vs user-level (`~/.claude.json`)"* — both appeared in one run.
+### CCAR-F Domain 2 — Tool Design & MCP Integration (18%)
 
-**Claude Certified Architect – Professional (CCAR-P)**
+**Topic 2.3 — tool distribution and tool choice.** The claim under test is that more tools means
+less reliable selection, and that scoping an agent to its role is the remedy.
 
-| Domain | Objective | Where |
-|---|---|---|
-| 3 — Integration (19%) | Evaluate tool/agent configuration for capability bloat | §6 finding 1, §7 |
-| 3 | Evaluate connection protocols and select the integration mechanism (MCP, API/CLI) | §2.4 |
-| 5 — Governance, Safety & Risk (14%) | Implement guardrails and safety controls | §7 — least privilege |
+*Where to look:* §4.5's table of six options, and §6 finding 1 — where Claude picked the built-in
+`WebSearch` over the MCP tool we configured, and `tools=[]` fixed it. The distinction that matters
+for the exam: `allowed_tools` **pre-approves**, it does not restrict.
 
-Least privilege — *removing* a capability rather than supervising it — is a pattern the
-Professional objectives return to repeatedly. It is the same reasoning as `tools=[]` here, arrived
-at by accident.
+**Topic 2.4 — integrating MCP servers.** Transports, how tools are named, and the difference
+between project-scoped (`.mcp.json`) and user-scoped (`~/.claude.json`) server configuration.
 
-> These tables cite domain names, weights and published task-statement titles only. The exam guides
-> themselves are distributed through the Anthropic Partner Academy; nothing here reproduces exam
-> questions or answers, and you should read the guides rather than treat this as a substitute.
+*Where to look:* §2.4 for MCP itself, §4.5 for the HTTP server config and the
+`mcp__<server>__<tool>` naming rule, and §6 finding 2 for the measurement — a single run inherited
+a server from *each* scope, which is exactly the distinction this topic tests.
+
+### CCAR-F Domain 5 — Context Management & Reliability (15%)
+
+**Topic 5.3 — error propagation.** Distinguishing a call that *failed* from a call that *succeeded
+and found nothing*, so the caller can decide whether retrying makes sense.
+
+*Where to look:* §3.5 and §4.7 — the `init` message reports each server as `connected`, `failed` or
+`needs-auth` before the run starts. **Partial coverage:** this catches connection problems only.
+Runtime tool errors and structured error payloads come in step 03.
+
+### CCAR-P Domain 3 — Integration (19%)
+
+**Evaluating configuration for capability bloat, and choosing an integration mechanism.** The
+Professional framing is a judgement call rather than a mechanism: given a working agent, which
+change most reduces risk?
+
+*Where to look:* §7 Design notes. The reliability fix was *removing* `WebSearch`, not instructing
+Claude to prefer Linkup — a capability an agent does not have cannot be misused, whereas prompt
+instructions carry a non-zero failure rate. §2.4 covers picking MCP over writing a bespoke
+integration.
+
+### CCAR-P Domain 5 — Governance, Safety & Risk (14%)
+
+**Guardrails and safety controls.** *Where to look:* §7, and the choice in §4.5 to name one exact
+tool rather than the `mcp__linkup__*` wildcard. Least privilege — removing capability rather than
+supervising it — is a pattern the Professional objectives return to repeatedly.
 
 ---
 
@@ -582,9 +604,10 @@ Honest limitations of this step, kept rather than hidden:
 
 ## 10. Next
 
-**Step 02 — multi-turn chat** (not written yet): replace one-shot `query()` with
-`ClaudeSDKClient`, so the session stays open and you can ask follow-up questions that build on
-earlier answers.
+**[Step 02 — the same agent, with everything visible](../02-verbose-output/)**: identical
+behaviour, but every message in the stream is rendered — the model's thinking, the tool arguments,
+what came back, timings, tokens, cache and cost. The loop you just read about becomes something you
+can watch.
 
 ### Reference
 

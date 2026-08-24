@@ -18,6 +18,7 @@ is already in the official docs.
 | Step | What you'll build | Concepts |
 |---|---|---|
 | [`research-agent/01-one-shot/`](research-agent/01-one-shot/) | A CLI agent that searches the live web before answering | Agentic loop · MCP · tools · permissions · isolation |
+| [`research-agent/02-verbose-output/`](research-agent/02-verbose-output/) | The same agent, fully instrumented | Message stream · thinking blocks · tool results · observability · cost and caching |
 
 More steps are added as they're built. Each is a complete, runnable program, not a fragment.
 
@@ -70,9 +71,8 @@ its own content to specific objectives.
 
 Two honest numbers up front. The tutorial's *eventual scope* targets four of the five Foundations
 domains — roughly **80% of the blueprint**, leaving Domain 3 (Claude Code configuration, 20%) to a
-sibling tutorial. Its *current* coverage is far smaller, because only step 01 exists: **2 of 30
-topics fully taught, 6 partly.** The matrix says exactly which, and its roadmap is built from the
-gaps.
+sibling tutorial. Its *current* coverage is smaller, because two steps exist: **3 of 30 topics
+fully taught, 7 partly.** The matrix says exactly which, and its roadmap is built from the gaps.
 
 **Professional (CCAR-P)** is a different character — architectural judgement and trade-offs rather
 than SDK mechanics, with no prescribed exercises. Each step's **Design notes** section is written
