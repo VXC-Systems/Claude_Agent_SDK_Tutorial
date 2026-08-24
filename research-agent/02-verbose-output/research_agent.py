@@ -187,8 +187,23 @@ def render_assistant_header(seq: int, m: AssistantMessage) -> None:
     for name in ("input_tokens", "cache_creation_input_tokens",
                  "cache_read_input_tokens"):
         field(f"usage.{name}", num(u.get(name, 0)))
+
+    # Every API call resends the WHOLE conversation so far. The three counts
+    # above are how that total was billed (fresh / written to cache / read from
+    # cache), so their sum is the context the model actually received.
+    sent = (u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+            + u.get("cache_read_input_tokens", 0))
+    delta = sent - render_assistant_header.previous_sent
+    note = f"grew by {num(delta)}" if render_assistant_header.previous_sent else "first call"
+    field("context sent to the model", num(sent), note=f"computed · {note}")
+    render_assistant_header.previous_sent = sent
+
     # usage.output_tokens is a snapshot here, not a tally, and stop_reason is
-    # None until the run ends — both are shown correctly in the ResultMessage.
+    # None on every AssistantMessage in this mode — the SDK runs the loop, so
+    # only the final ResultMessage reports why it stopped.
+
+
+render_assistant_header.previous_sent = 0   # module-level state for the delta
 
 
 def render_user_header(seq: int, m: UserMessage) -> None:
