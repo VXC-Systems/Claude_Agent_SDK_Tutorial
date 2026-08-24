@@ -64,26 +64,23 @@ walkthrough → run it → **what we learned** → design notes → exam mapping
 
 ## Certification coverage
 
-The exams are published by Anthropic; download the guides from the Anthropic Partner Academy. Each
-step's §8 maps its content to specific task statements.
+**[`EXAM-COVERAGE.md`](EXAM-COVERAGE.md) is the full matrix** — every topic in both blueprints,
+what is taught, what is planned, and what is deliberately out of scope. Each step's §8 also maps
+its own content to specific objectives.
 
-**Foundations (CCAR-F)** — 60 items, 120 minutes, scaled cut score 720/1000.
+Two honest numbers up front. The tutorial's *eventual scope* targets four of the five Foundations
+domains — roughly **80% of the blueprint**, leaving Domain 3 (Claude Code configuration, 20%) to a
+sibling tutorial. Its *current* coverage is far smaller, because only step 01 exists: **2 of 30
+topics fully taught, 6 partly.** The matrix says exactly which, and its roadmap is built from the
+gaps.
 
-| Domain | Weight | Covered here |
-|---|---|---|
-| 1 — Agentic Architecture & Orchestration | 27% | **Yes** — the core of this tutorial |
-| 2 — Tool Design & MCP Integration | 18% | **Yes** |
-| 3 — Claude Code Configuration & Workflows | 20% | **Mostly not** — a separate tutorial. Partial exception: the review skills in `.claude/skills/` |
-| 4 — Prompt Engineering & Structured Output | 20% | **Yes**, in later steps |
-| 5 — Context Management & Reliability | 15% | **Yes** |
+**Professional (CCAR-P)** is a different character — architectural judgement and trade-offs rather
+than SDK mechanics, with no prescribed exercises. Each step's **Design notes** section is written
+for that level: why a design went the way it did, and what it does not handle.
 
-So this tutorial covers roughly **80%** of the Foundations blueprint. Domain 3 is about configuring
-Claude Code rather than building with the SDK, and belongs elsewhere.
-
-**Professional (CCAR-P)** — 63 items, seven domains, and a different character: architectural
-judgement and trade-offs rather than SDK mechanics. There are no prescribed exercises; the guide
-asks you to *build and operate an end-to-end solution*. Each step's **Design notes** section is
-written for that level — why a design went the way it did, and what it does not handle.
+The exam guides are distributed through the Anthropic Partner Academy and are not publicly
+downloadable. Nothing here reproduces their text or any exam content — the matrix indexes against
+paraphrased topic labels, so it is useful without being a substitute for the guides.
 
 ## Contributing / reviewing
 

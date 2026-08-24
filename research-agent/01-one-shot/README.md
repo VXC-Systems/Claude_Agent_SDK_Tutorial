@@ -533,6 +533,9 @@ This step maps to these published objectives. Section numbers refer to the exam 
 distributed through the **Anthropic Partner Academy** and are **not publicly downloadable** — if
 you don't have access, treat this section as orientation rather than something you can check.
 
+For the whole picture across every step — what is taught, planned, or out of scope — see
+[`EXAM-COVERAGE.md`](../../EXAM-COVERAGE.md).
+
 **Claude Certified Architect – Foundations (CCAR-F)**
 
 | Domain | Task statement | Where in this step |
