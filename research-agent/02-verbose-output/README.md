@@ -234,6 +234,30 @@ message:
 dict — `session_id` sits next to `apiKeySource`. This is not a typo in the tutorial, and guessing
 the wrong casing is the kind of error that costs you a debugging session.
 
+**Why they differ, which makes it memorable.** The two conventions are just naming styles —
+`snake_case` uses underscores and is the norm in Python and in REST/JSON APIs; `camelCase` uses a
+capital letter and is the norm in JavaScript and TypeScript. Both appear here because the two
+dictionaries come from **different sides of a boundary**, and the SDK's own type declarations say
+so:
+
+```
+ResultMessage.usage        →  dict[str, Any]           ← untyped: whatever the API sent
+ResultMessage.model_usage  →  dict[str, ModelUsage]    ← a TypedDict the SDK declares
+```
+
+`usage` is passed through **verbatim from the Anthropic API**, which is snake_case. `model_usage`
+is assembled by the **Claude Code CLI** (§2.2 — the subprocess), which is TypeScript, hence
+camelCase.
+
+The giveaway is what `model_usage` contains: `costUSD`, `contextWindow`, `maxOutputTokens`,
+`provider`. **The API returns none of those** — it reports tokens and has no idea what you are
+paying. Cost is computed locally from a pricing table, and the context window is model metadata the
+CLI already knows. So `model_usage` cannot be a passthrough; it is the tooling's own roll-up.
+
+Which gives you a rule worth carrying: **casing tells you which layer you are touching.**
+snake_case is raw API output; camelCase was computed for you by the tooling — so don't go hunting
+for a camelCase field in the Anthropic API reference, because it is not there.
+
 ---
 
 ## 3. Setup
